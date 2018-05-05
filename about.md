@@ -23,6 +23,7 @@ Here are some things I like:
 * sunsets
 * daydreaming
 * listening to music
+* simplicity & minimalism
 
 This website is built using [Jekyll][jekyll], and is hosted for free at [GitHub
 Pages][github_pages].
