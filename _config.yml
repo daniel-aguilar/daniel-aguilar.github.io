@@ -22,5 +22,5 @@ theme: minima
 title: Daniel's Blog
 description: Show me the code
 show_excerpts: true
-rss: rss
+rss: RSS Feed
 github_username: daniel-aguilar
