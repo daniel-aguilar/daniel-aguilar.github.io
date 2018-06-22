@@ -9,3 +9,28 @@ img.emoji {
   margin: 0 .05em 0 .1em;
   vertical-align: -0.1em;
 }
+
+form {
+  label:after {
+    content: " (required)";
+    font-size: 0.8em;
+    color: #828282;
+  }
+
+  input, textarea {
+    box-sizing: border-box;
+    margin-bottom: 0.5em;
+    display: block;
+    width: 100%;
+  }
+
+  textarea {
+    resize: vertical;
+    height: 7em;
+  }
+
+  small#error {
+    color: red;
+    display: none;
+  }
+}
