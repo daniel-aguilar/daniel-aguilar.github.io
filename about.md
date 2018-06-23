@@ -7,9 +7,9 @@ title: About
 Hi, my name is Daniel Aguilar. I'm a software developer from [Costa
 Rica][costa_rica].
 
-I like to describe myself as enthusiastic and passionate, and not just about my
-craft. I'm always looking for ways of bettering myself and improving things
-around me.
+I like to describe myself as enthusiastic and passionate, and not just about
+programming. I'm always looking for ways of bettering myself and improving
+things around me.
 
 Reading and learning about new stuff is one of my hobbies. I think learning by
 doing is a very effective way of discovering and applying unfamiliar concepts.
