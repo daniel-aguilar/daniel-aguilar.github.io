@@ -23,8 +23,8 @@ the best achievable way.
 
 ## This website
 
-This is my personal blog. It's built using [Jekyll][jekyll], and is hosted for
-free at [GitHub Pages][github_pages].
+This is my personal blog. It's built using [Jekyll][jekyll], and it's hosted at
+[GitHub Pages][github_pages].
 
 The emojis used across this website are part of the [twemoji open source emoji
 project][twemoji]. The favicon is [Upside-Down Face][1f643], which I like very
