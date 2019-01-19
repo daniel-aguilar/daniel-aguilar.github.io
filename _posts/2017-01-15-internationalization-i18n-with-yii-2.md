@@ -273,7 +273,7 @@ check out this other great [tutorial][5] on the same topic.
 I hope that this guide has helped you understand how does i18n works in Yii 2.
 
 [1]: http://www.yiiframework.com/doc-2.0/yii-baseyii.html#t%28%29-detail
-[2]: /assets/img/example-english.png
-[3]: /assets/img/example-spanish.png
+[2]: https://i.imgur.com/DXqt3d6.png
+[3]: https://i.imgur.com/jPA1te7.png
 [4]: http://www.yiiframework.com/doc-2.0/guide-tutorial-i18n.html
 [5]: https://code.tutsplus.com/tutorials/how-to-program-with-yii2-localization-with-i18n--cms-23140
