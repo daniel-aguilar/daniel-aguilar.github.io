@@ -10,6 +10,11 @@ img.emoji {
   vertical-align: -0.1em;
 }
 
+div.post-content img:not(.emoji) {
+  border: 2px solid #424242;
+  border-radius: 6px;
+}
+
 form {
   label:after {
     content: " (required)";
