@@ -1,6 +1,6 @@
 ---
 title: GPG Key
-...
+---
 
 Here's my [GnuPG][gpg] public key.
 
