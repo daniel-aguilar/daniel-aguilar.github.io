@@ -39,3 +39,7 @@ form {
     display: none;
   }
 }
+
+.snippet {
+  @extend %vertical-rhythm;
+}
