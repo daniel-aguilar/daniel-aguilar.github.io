@@ -61,7 +61,7 @@ Java(TM) SE Runtime Environment (build 1.8.0_161-b12)
 Java HotSpot(TM) 64-Bit Server VM (build 25.161-b12, mixed mode)
 ```
 
-There you go, happy programming! 🎉
+There you go, happy programming!
 
 [1]: https://itsfoss.com/checksum-tools-guide-linux/
 [2]: http://www.pathname.com/fhs/pub/fhs-2.3.html#OPTADDONAPPLICATIONSOFTWAREPACKAGES
