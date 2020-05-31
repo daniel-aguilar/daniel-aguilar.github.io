@@ -1,5 +1,5 @@
 ---
-title: "Using vimrc Files per Directory"
+title: Using vimrc Files per Directory
 ---
 
 How many times have you wished you could have a different vimrc

@@ -1,6 +1,5 @@
 ---
 title: "Dockerfile: CMD vs. ENTRYPOINT"
-categories: ["guides"]
 ---
 
 Docker provides a couple of instructions to specify what a container

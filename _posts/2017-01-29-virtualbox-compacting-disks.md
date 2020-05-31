@@ -1,7 +1,5 @@
 ---
 title: "VirtualBox: Compacting Disks"
-categories: guides
-tags: [virtualbox]
 ---
 
 VirtualBox's dynamically allocated disks are great because they start

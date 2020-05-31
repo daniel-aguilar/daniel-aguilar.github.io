@@ -5,10 +5,10 @@ excerpt: ""
 
 Setting the value of a `<select>` element it's quite easy:
 
-```javascript
+{% highlight javascript %}
 let selectEl = document.querySelector('select#favorite-food');
 selectEl.value = 'pizza';
-```
+{% endhighlight %}
 
 Yet there's a particular UX detail that we might have overlooked:
 **what if the value is not an existing option?**
@@ -33,11 +33,11 @@ placeholder text to guide the user.
 # The Solution
 
 Fortunately the `HTMLSelectElement` interface has a
-[`selectedIndex`][selectedIndex] property with a value of `-1` when no
+[`selectedIndex`][1] property with a value of `-1` when no
 option is selected, which is exactly our case. We can leverage this
 property to perform a quick validation:
 
 {% include snippets/select-fixed.html %}
 
 *[UX]: User experience
-[selectedIndex]: https://developer.mozilla.org/en-US/docs/Web/API/HTMLSelectElement/selectedIndex
+[1]: https://developer.mozilla.org/en-US/docs/Web/API/HTMLSelectElement/selectedIndex

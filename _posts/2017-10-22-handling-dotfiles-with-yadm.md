@@ -1,5 +1,5 @@
 ---
-title: "Handling dotfiles with YADM"
+title: Handling dotfiles with YADM
 ---
 
 Nothing makes me feel more at `$HOME` than seeing my dotfiles in place.

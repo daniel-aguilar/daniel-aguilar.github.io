@@ -1,12 +1,11 @@
 ---
 title: cherry-pick Considered Harmful
-tags: [git]
 ---
 
 or: How I Learned to Stop cherry-picking and Love the merge
 
 Funny headlines aside, this post is gonna be a small rant as to why I find
-cherry-picking particularly annoying when working with [Gitflow][gitflow].
+cherry-picking particularly annoying when working with [Gitflow][1].
 
 Gitflow is a good idea! I'm just not a huge fan of its ~~horrifying~~ humorous
 results in the log, as opposed to a much linear history:
@@ -46,4 +45,4 @@ good code, given how git can also be used as an auditing tool, believe me, it
 can save you a lot of trouble in the long run. Do yourself a favor an try to
 avoid cherry-picking as much as you can!
 
-[gitflow]: https://nvie.com/posts/a-successful-git-branching-model/
+[1]: https://nvie.com/posts/a-successful-git-branching-model/

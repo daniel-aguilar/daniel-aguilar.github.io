@@ -1,5 +1,5 @@
 ---
-title: "How to Install Oracle JDK in Ubuntu"
+title: How to Install Oracle JDK in Ubuntu
 ---
 
 I've been a Windows user almost all my life, mainly because I didn't know
@@ -20,12 +20,12 @@ Ok, let's begin.
 ## Step 1: Downloading the Binaries
 
 Head over to Oracle's website and download the JDK. Remember to [verify the
-checksum][checksum]!
+checksum][1]!
 
 ## Step 2: Choosing the Appropriate Directory
 
 What directory is appropriate for a system-wide installation of Java? According
-to [FHS][fhs] `opt/` fits just well. Go ahead and extract the contents of the
+to [FHS][2] `opt/` fits just well. Go ahead and extract the contents of the
 downloaded archive there.
 
 ## Step 3: Setting the Environment Variables
@@ -35,7 +35,7 @@ Where do we declare `JAVA_HOME` and modify our `PATH`? It can't be in
 What about a graphical shell?
 
 I've found that the best location to set up environment variables is in
-`/etc/profile.d`. According to the [Ubuntu Wiki][wiki]:
+`/etc/profile.d`. According to the [Ubuntu Wiki][3]:
 
 > Files with the .sh extension in the /etc/profile.d directory get executed
 > whenever a bash login shell is entered (e.g. when logging in from the console
@@ -63,6 +63,6 @@ Java HotSpot(TM) 64-Bit Server VM (build 25.161-b12, mixed mode)
 
 There you go, happy programming! 🎉
 
-[checksum]: https://itsfoss.com/checksum-tools-guide-linux/
-[fhs]: http://www.pathname.com/fhs/pub/fhs-2.3.html#OPTADDONAPPLICATIONSOFTWAREPACKAGES
-[wiki]: https://help.ubuntu.com/community/EnvironmentVariables#A.2Fetc.2Fprofile.d.2F.2A.sh
+[1]: https://itsfoss.com/checksum-tools-guide-linux/
+[2]: http://www.pathname.com/fhs/pub/fhs-2.3.html#OPTADDONAPPLICATIONSOFTWAREPACKAGES
+[3]: https://help.ubuntu.com/community/EnvironmentVariables#A.2Fetc.2Fprofile.d.2F.2A.sh

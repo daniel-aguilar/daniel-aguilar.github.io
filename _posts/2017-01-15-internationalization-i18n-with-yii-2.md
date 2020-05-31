@@ -1,7 +1,5 @@
 ---
-title: "Internationalization (i18n) with Yii 2"
-categories: guides
-tags: [php, yii2, i18n]
+title: Internationalization (i18n) with Yii 2
 ---
 
 Yii 2 provides a very intuitive way to translate your web application,

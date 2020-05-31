@@ -1,6 +1,5 @@
 ---
 title: Resuming the Journey
-category: other
 ---
 
 After an extended hiatus, I've decided I'll pick my blog where I left

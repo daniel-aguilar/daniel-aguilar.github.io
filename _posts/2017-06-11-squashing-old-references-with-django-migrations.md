@@ -1,7 +1,5 @@
 ---
-title: 'Squashing Old References with Django Migrations'
-categories: guides
-tags: [python, django]
+title: Squashing Old References with Django Migrations
 ---
 
 The other day I found a small typo in a function I was referencing in
@@ -9,7 +7,7 @@ the `upload_to` field option in one of my models. I fixed the nasty
 typo, only to discover I had broken the migrations, as it was also being
 referenced in one of them.
 
-According to the [docs][django_docs], we can make use of *squashing* to
+According to the [docs][1], we can make use of *squashing* to
 remove these old references. Here's how I managed to solve my OCD
 inspired issue.
 
@@ -75,4 +73,4 @@ $ ./manage.py migrate
 Once migrations are up to date, it is safe to remove not only the typo
 function, but all the squashed migrations as well. Peace at last.
 
-[django_docs]: https://docs.djangoproject.com/en/1.11/topics/migrations/#historical-models
+[1]: https://docs.djangoproject.com/en/1.11/topics/migrations/#historical-models
