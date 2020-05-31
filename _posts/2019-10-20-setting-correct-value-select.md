@@ -3,6 +3,22 @@ title: Setting a Correct Value in a select Element
 excerpt: ""
 ---
 
+<script>
+  function choosePizza() {
+    let selectEl = document.getElementById('sel-1');
+    selectEl.value = 'pizza';
+  }
+
+  function choosePizzaFixed() {
+    let selectEl = document.getElementById('sel-2');
+    selectEl.value = 'pizza';
+
+    if (selectEl.selectedIndex === -1) {
+      selectEl.value = '';
+    }
+  }
+</script>
+
 Setting the value of a `<select>` element it's quite easy:
 
 {% highlight javascript %}
@@ -23,7 +39,16 @@ of options.
 The problem is when the option is not listed (maybe it's no longer
 available):
 
-{% include snippets/select.html %}
+<div class="snippet" markdown="0">
+  <select id="sel-1">
+    <option value="" disabled selected>What's your favorite food?</option>
+    <option value="chocolate">Chocolate</option>
+    <option value="ice-cream">Ice Cream</option>
+    <option value="fries">French Fries</option>
+  </select>
+
+  <button type="button" onclick="choosePizza()">Choose Pizza</button>
+</div>
 
 The `<select>` is obviously left at an invalid state (its value is
 `""`), which means existing validation mechanisms still work as
@@ -37,7 +62,16 @@ Fortunately the `HTMLSelectElement` interface has a
 option is selected, which is exactly our case. We can leverage this
 property to perform a quick validation:
 
-{% include snippets/select-fixed.html %}
+<div class="snippet" markdown="0">
+  <select id="sel-2">
+    <option value="" disabled selected>What's your favorite food?</option>
+    <option value="chocolate">Chocolate</option>
+    <option value="ice-cream">Ice Cream</option>
+    <option value="fries">French Fries</option>
+  </select>
+
+  <button type="button" onclick="choosePizzaFixed()">Choose Pizza</button>
+</div>
 
 *[UX]: User experience
 [1]: https://developer.mozilla.org/en-US/docs/Web/API/HTMLSelectElement/selectedIndex
