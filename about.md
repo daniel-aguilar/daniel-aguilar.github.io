@@ -4,8 +4,7 @@ title: About
 
 ## Me
 
-Hi, my name is Daniel Aguilar. I'm a software developer from [Costa
-Rica][costa_rica].
+Hi, my name is Daniel Aguilar. I'm a software engineer from [Costa Rica][1].
 
 I like to describe myself as enthusiastic and passionate, and not just about
 programming. I'm always looking for ways of bettering myself and improving
@@ -23,18 +22,10 @@ the best achievable way.
 
 ## This website
 
-This is my personal blog. It's built using [Jekyll][jekyll], and it's hosted at
-[GitHub Pages][github_pages].
+This is my personal blog. It's built using [Jekyll][2], and it's hosted at
+[GitHub Pages][3]. You can check out the sources at [this git repository][4].
 
-The emojis used across this website are part of the [twemoji open source emoji
-project][twemoji]. The favicon is [Upside-Down Face][1f643], which I like very
-much. 🙃
-
-You can check out this website's sources at [this git repository][blog_repo].
-
-[costa_rica]: https://en.wikipedia.org/wiki/Costa_Rica
-[jekyll]: https://jekyllrb.com/
-[github_pages]: https://pages.github.com/
-[twemoji]: https://github.com/twitter/twemoji
-[1f643]: https://emojipedia.org/upside-down-face/
-[blog_repo]: https://github.com/daniel-aguilar/daniel-aguilar.github.io
+[1]: https://en.wikipedia.org/wiki/Costa_Rica
+[2]: https://jekyllrb.com/
+[3]: https://pages.github.com/
+[4]: https://github.com/daniel-aguilar/daniel-aguilar.github.io
