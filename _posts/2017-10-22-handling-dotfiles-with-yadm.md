@@ -1,4 +1,5 @@
 ---
+layout: post
 title: Handling dotfiles with YADM
 ---
 

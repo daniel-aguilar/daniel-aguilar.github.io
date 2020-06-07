@@ -1,4 +1,5 @@
 ---
+layout: post
 title: Setting a Correct Value in a select Element
 excerpt: ""
 ---

@@ -1,4 +1,5 @@
 ---
+layout: post
 title: cherry-pick Considered Harmful
 ---
 

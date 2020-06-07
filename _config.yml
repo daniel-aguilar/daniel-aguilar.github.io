@@ -1,20 +1,4 @@
-plugins:
-  - jekyll-feed
-  - jekyll-sitemap
 permalink: "/:title/"
-defaults:
-    -
-        scope:
-            path: ""
-            type: posts
-        values:
-            layout: post
-    -
-        scope:
-            path: ""
-            type: pages
-        values:
-            layout: page
 theme: minima
 
 # Minima settings
@@ -22,6 +6,5 @@ theme: minima
 title: Daniel's Blog
 description: Show me the code
 show_excerpts: true
-rss: RSS Feed
 github_username: daniel-aguilar
 linkedin_username: dan-aguilar

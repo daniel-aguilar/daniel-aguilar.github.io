@@ -1,4 +1,5 @@
 ---
+layout: post
 title: Using vimrc Files per Directory
 ---
 

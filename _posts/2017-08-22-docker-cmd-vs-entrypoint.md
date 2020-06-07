@@ -1,4 +1,5 @@
 ---
+layout: post
 title: "Dockerfile: CMD vs. ENTRYPOINT"
 ---
 

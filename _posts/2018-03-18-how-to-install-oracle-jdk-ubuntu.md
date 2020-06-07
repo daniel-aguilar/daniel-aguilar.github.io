@@ -1,4 +1,5 @@
 ---
+layout: post
 title: How to Install Oracle JDK in Ubuntu
 ---
 

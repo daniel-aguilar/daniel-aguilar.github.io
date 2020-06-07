@@ -1,4 +1,5 @@
 ---
+layout: post
 title: Squashing Old References with Django Migrations
 ---
 

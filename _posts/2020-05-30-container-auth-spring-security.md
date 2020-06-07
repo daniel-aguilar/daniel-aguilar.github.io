@@ -1,4 +1,5 @@
 ---
+layout: post
 title: Container Authentication with Spring Security
 ---
 

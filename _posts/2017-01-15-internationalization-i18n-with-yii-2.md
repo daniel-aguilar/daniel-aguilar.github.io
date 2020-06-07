@@ -1,4 +1,5 @@
 ---
+layout: post
 title: Internationalization (i18n) with Yii 2
 ---
 
