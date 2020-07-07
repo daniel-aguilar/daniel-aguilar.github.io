@@ -160,7 +160,7 @@ how much functionality you're getting back! Plus, container authentication
 delegates the security to the application server, making it relatively easier to
 implement.
 
-[1]: https://github.com/daniel-aguilar/samples/tree/master/jee-auth
+[1]: https://github.com/daniel-aguilar/daniel-aguilar.github.io/tree/blog/samples/jee-auth
 [2]: https://javaee.github.io/servlet-spec/downloads/servlet-3.1/Final/servlet-3_1-final.pdf
 [3]: https://docs.spring.io/spring-security/site/docs/5.3.2.RELEASE/reference/html5/#servlet-preauth
 [4]: https://wiki.eclipse.org/Jetty/Tutorial/Realms

@@ -1,5 +1,6 @@
 permalink: "/:title/"
 theme: minima
+exclude: [samples]
 
 # Minima settings
 
