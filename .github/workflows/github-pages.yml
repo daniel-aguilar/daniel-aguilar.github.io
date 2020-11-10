@@ -1,7 +1,5 @@
 name: Deploy to GitHub Pages
-
 on: push
-
 jobs:
   github-pages:
     runs-on: ubuntu-latest
@@ -30,4 +28,4 @@ jobs:
           git config user.email "octocat@users.noreply.github.com"
           git add -A
           git commit -qm "Deploy from ${GITHUB_SHA}"
-          git push -f "https://${{ secrets.JEKYLL_PAT }}@github.com/${GITHUB_REPOSITORY}.git" HEAD:master
+          git push -f "https://${{ secrets.JEKYLL_PAT }}@github.com/${GITHUB_REPOSITORY}.git" HEAD:gh-pages
