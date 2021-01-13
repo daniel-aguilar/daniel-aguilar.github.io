@@ -1,0 +1,719 @@
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" ><generator uri="https://jekyllrb.com/" version="4.2.0">Jekyll</generator><link href="/feed.xml" rel="self" type="application/atom+xml" /><link href="/" rel="alternate" type="text/html" /><updated>2021-01-13T04:45:13+00:00</updated><id>/feed.xml</id><title type="html">Daniel’s Blog</title><subtitle>Show me the code</subtitle><entry><title type="html">Introduction to BSD Sockets</title><link href="/introduction-bsd-sockets/" rel="alternate" type="text/html" title="Introduction to BSD Sockets" /><published>2020-07-06T00:00:00+00:00</published><updated>2020-07-06T00:00:00+00:00</updated><id>/introduction-bsd-sockets</id><content type="html" xml:base="/introduction-bsd-sockets/">&lt;p&gt;The operating system truly makes developers’ jobs much more easier: we don’t
+have to worry about the boring details, and can focus on what our programs do
+instead. Keeping with the same philosophy of abstracting the details, and thanks
+to the people at UC Berkeley, communicating over a network isn’t that much
+different as writing some data to a file.&lt;/p&gt;
+
+&lt;p&gt;The example I’ll be working on will be the classic client-server model, using
+IPv4. The server will be listening for messages (printing them out as they come)
+and react accordingly, while the client sends messages and outputs responses
+from the server. The server runs in a Docker container in its own network. You
+can find the example &lt;a href=&quot;https://github.com/daniel-aguilar/daniel-aguilar.github.io/tree/master/samples/bsd_sockets&quot;&gt;here&lt;/a&gt;.&lt;/p&gt;
+
+&lt;p&gt;The example is written in C. Most modern programming languages provide support
+for (the now called low-level) sockets, but what better way to learn other than
+using the original implementation?&lt;/p&gt;
+
+&lt;h2 id=&quot;the-basics&quot;&gt;The Basics&lt;/h2&gt;
+
+&lt;p&gt;The original implementation of the TCP/IP stack for Unix-like systems appeared
+in 4.2BSD, it was later adopted as a POSIX standard. As I mentioned, it was
+written in C, and introduced the concept of the socket—an endpoint for
+communication between processes.&lt;/p&gt;
+
+&lt;p&gt;There are many &lt;em&gt;domains&lt;/em&gt; of sockets (also known as &lt;em&gt;families&lt;/em&gt;), but the 2 most
+popular you’ll encounter are &lt;em&gt;UNIX domains&lt;/em&gt; and &lt;em&gt;Internet protocols&lt;/em&gt;. While I’ll
+be discussing the Internet protocols family of sockets in this article, UNIX
+domain sockets are not that different. They’re used for efficient local
+communication (on the same machine). The Docker daemon, for instance, uses this
+type of socket.&lt;/p&gt;
+
+&lt;p&gt;Sockets also have &lt;em&gt;types&lt;/em&gt;. I’ll be working with stream-type sockets
+(&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;SOCK_STREAM&lt;/code&gt;), corresponding to a TCP socket.&lt;/p&gt;
+
+&lt;h3 id=&quot;the-telephone-analogy&quot;&gt;The Telephone Analogy&lt;/h3&gt;
+
+&lt;p&gt;A well-known way of explaining sockets is using the telephone analogy. In order
+to receive a call, you must first install a phone, have a phone number, hear it
+ring, and finally take the call. Generally, you do not need to know the caller’s
+number.&lt;/p&gt;
+
+&lt;p&gt;To make a phone call, the process is somewhat the same in that you still need a
+phone, but instead of passively listen for incoming calls, you dial a number
+instead, and wait for someone to answer.&lt;/p&gt;
+
+&lt;p&gt;Sockets work like telephones. On the server side, you create a &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;socket()&lt;/code&gt;,
+&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;bind()&lt;/code&gt; a local address to it, &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;listen()&lt;/code&gt; for connections, and finally
+&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;accept()&lt;/code&gt; one. On the client side, you create a &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;socket()&lt;/code&gt; and &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;connect()&lt;/code&gt; to
+an address.&lt;/p&gt;
+
+&lt;h2 id=&quot;working-with-addresses&quot;&gt;Working with Addresses&lt;/h2&gt;
+
+&lt;p&gt;While we can work with dot-decimal notation IP addresses (e.g. 192.168.1.110),
+ultimately they have to be converted to binary form (network byte order). Both
+&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;bind()&lt;/code&gt; and &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;connect()&lt;/code&gt; have a &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;sockaddr&lt;/code&gt; argument, a struct that holds data
+about an address. You will see something like this in the client and server
+code:&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-c&quot; data-lang=&quot;c&quot;&gt;&lt;span class=&quot;k&quot;&gt;struct&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;sockaddr_in&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;address&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;struct&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;in_addr&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;ip&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+
+&lt;span class=&quot;n&quot;&gt;inet_aton&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;192.168.1.110&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;amp;&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;ip&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;address&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;sin_addr&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;ip&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;address&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;sin_port&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;htons&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;8080&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;address&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;sin_family&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;AF_INET&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;We can use the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;inet_aton()&lt;/code&gt; and &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;htons()&lt;/code&gt; utilities to convert such
+values. Finally, we need to specify what kind of address we’re talking
+about. The address family for IPv4 Internet protocols is &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;AF_INET&lt;/code&gt;.&lt;/p&gt;
+
+&lt;h2 id=&quot;server-code&quot;&gt;Server Code&lt;/h2&gt;
+
+&lt;p&gt;This server will implement a simple protocol consisting of two commands: &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;HELLO&lt;/code&gt;
+and &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;BYE&lt;/code&gt;. If the client sends a &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;HELLO&lt;/code&gt; message, the server then replies with
+“HI”, while a &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;BYE&lt;/code&gt; message instructs the server to shut down. All messages
+received must be sent to stdout.&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-c&quot; data-lang=&quot;c&quot;&gt;&lt;table class=&quot;rouge-table&quot;&gt;&lt;tbody&gt;&lt;tr&gt;&lt;td class=&quot;gutter gl&quot;&gt;&lt;pre class=&quot;lineno&quot;&gt;1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;c1&quot;&gt;// server.c stub&lt;/span&gt;
+&lt;span class=&quot;kt&quot;&gt;char&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;buffer&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;12&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;];&lt;/span&gt;
+&lt;span class=&quot;kt&quot;&gt;int&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;data_socket&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+&lt;span class=&quot;kt&quot;&gt;int&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;conn_socket&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;socket&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;AF_INET&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;SOCK_STREAM&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;bind&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;conn_socket&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;const&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;struct&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;sockaddr&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;amp;&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;address&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;
+     &lt;span class=&quot;k&quot;&gt;sizeof&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;struct&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;sockaddr_in&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;));&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;listen&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;conn_socket&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;5&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+
+&lt;span class=&quot;k&quot;&gt;for&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(;;)&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+	&lt;span class=&quot;n&quot;&gt;data_socket&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;accept&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;conn_socket&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;NULL&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;NULL&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+	&lt;span class=&quot;n&quot;&gt;read&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;data_socket&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;buffer&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;12&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+	&lt;span class=&quot;n&quot;&gt;buffer&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;11&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;sc&quot;&gt;'\0'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+	&lt;span class=&quot;n&quot;&gt;puts&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;buffer&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+
+	&lt;span class=&quot;k&quot;&gt;if&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;strcmp&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;buffer&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&quot;HELLO&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;==&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+		&lt;span class=&quot;n&quot;&gt;strcpy&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;buffer&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&quot;HI&lt;/span&gt;&lt;span class=&quot;se&quot;&gt;\n&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+		&lt;span class=&quot;n&quot;&gt;write&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;data_socket&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;buffer&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;12&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+	&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+
+	&lt;span class=&quot;n&quot;&gt;close&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;data_socket&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+	&lt;span class=&quot;k&quot;&gt;if&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;strcmp&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;buffer&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&quot;BYE&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;==&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+		&lt;span class=&quot;k&quot;&gt;break&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+	&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+
+&lt;span class=&quot;n&quot;&gt;close&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;conn_socket&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/tbody&gt;&lt;/table&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;Assuming &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;address&lt;/code&gt; has been correctly assigned, line 4 creates an IPv4
+&lt;em&gt;listening&lt;/em&gt; socket. I say listening because once we accept a connection, a new
+socket is created, so as to support multiple concurrent connections. Line 5
+binds the previous socket to an address, while line 7 configures the socket to
+listen for up to 5 pending connections in a queue.&lt;/p&gt;
+
+&lt;p&gt;The main loop consists of accepting a new connection, reading 12 bytes from the
+socket, implement a HELLO protocol, and then close the data socket. If a &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;BYE&lt;/code&gt;
+command is received, the listening socket is closed too.&lt;/p&gt;
+
+&lt;p&gt;If you’ve worked with file I/O in C before, you’ll notice the process is
+essentially the same. &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;data_socket&lt;/code&gt; is a file descriptor and so the standard
+&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;read()&lt;/code&gt; and &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;write()&lt;/code&gt; operations work as they would with any other file.&lt;/p&gt;
+
+&lt;h2 id=&quot;client-code&quot;&gt;Client Code&lt;/h2&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-c&quot; data-lang=&quot;c&quot;&gt;&lt;span class=&quot;c1&quot;&gt;// client.c stub&lt;/span&gt;
+&lt;span class=&quot;kt&quot;&gt;char&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;response&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;12&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;];&lt;/span&gt;
+
+&lt;span class=&quot;kt&quot;&gt;int&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;fd&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;socket&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;AF_INET&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;SOCK_STREAM&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;connect&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;fd&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;const&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;struct&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;sockaddr&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;amp;&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;address&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;sizeof&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;struct&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;sockaddr_in&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;));&lt;/span&gt;
+
+&lt;span class=&quot;n&quot;&gt;write&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;fd&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&quot;HELLO&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;5&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;read&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;fd&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;response&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;12&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;printf&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;response&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;close&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;fd&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;The client can be significantly smaller as it only has one task. Again, here I’m
+assuming &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;address&lt;/code&gt; its been properly assigned. In this particular instance I am
+expected to received a “HI” response from the server.&lt;/p&gt;
+
+&lt;h2 id=&quot;conclusion&quot;&gt;Conclusion&lt;/h2&gt;
+
+&lt;p&gt;I hope this explanation was clear. I tried to keep the code concise by removing
+includes, error handling noise and other off topic details, but I encourage you
+to download the &lt;a href=&quot;https://github.com/daniel-aguilar/daniel-aguilar.github.io/tree/master/samples/bsd_sockets&quot;&gt;full example&lt;/a&gt; and try it yourself.&lt;/p&gt;</content><author><name></name></author><summary type="html">The operating system truly makes developers’ jobs much more easier: we don’t have to worry about the boring details, and can focus on what our programs do instead. Keeping with the same philosophy of abstracting the details, and thanks to the people at UC Berkeley, communicating over a network isn’t that much different as writing some data to a file.</summary></entry><entry><title type="html">Container Authentication with Spring Security</title><link href="/container-auth-spring-security/" rel="alternate" type="text/html" title="Container Authentication with Spring Security" /><published>2020-05-30T00:00:00+00:00</published><updated>2020-05-30T00:00:00+00:00</updated><id>/container-auth-spring-security</id><content type="html" xml:base="/container-auth-spring-security/">&lt;p&gt;Spring Security is a framework full of solid features, most of them working
+nearly out of the box. Yet it’s still flexible enough to adapt to your
+particular requirements. In this article I’ll demonstrate how to integrate your
+Spring application authentication with a servlet container, such as WebSphere
+Application Server (WAS) or Tomcat, using Spring Security.&lt;/p&gt;
+
+&lt;p&gt;A little bit of background before we get started. I was assigned a new project
+at work (Java web application running in a WAS), with one of the requirements
+being the ability to authenticate existing users in a directory service,
+specifically an LDAP server. While doing my research at the time, I found myself
+either digging through old forum posts, inspecting inherited and unmaintained
+code, or reading a whole spec in search for a particular detail. So I thought
+I’d write an article about it, with completeness being the main goal.&lt;/p&gt;
+
+&lt;p&gt;I’ll be working with OpenJDK 8, Spring Boot 2.3.0, Spring Security 5.3.2 and the
+Jetty Maven plugin, which spins up a servlet container ideal for development. A
+working sample of the following code can be found &lt;a href=&quot;https://github.com/daniel-aguilar/daniel-aguilar.github.io/tree/master/samples/jee-auth&quot;&gt;here&lt;/a&gt;.&lt;/p&gt;
+
+&lt;h2 id=&quot;form-based-authentication&quot;&gt;Form Based Authentication&lt;/h2&gt;
+
+&lt;p&gt;The first step is setting up the security configuration over at our &lt;em&gt;deployment
+descriptor&lt;/em&gt; (i.e. &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;web.xml&lt;/code&gt;). FORM based login just so happens to be our ideal
+authentication mechanism, users are presented with a login page where they enter
+their credentials. Under the hood, the action of the form is &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;j_security_check&lt;/code&gt;,
+where we’ll be POSTing a &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;j_username&lt;/code&gt; and &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;j_password&lt;/code&gt;. The server then returns
+a cookie &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;JSESSIONID&lt;/code&gt; used to validate any other requests that require
+authentication (and &lt;em&gt;authorization&lt;/em&gt;, or access on the basis of roles). Here’s
+how it’s done:&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-xml&quot; data-lang=&quot;xml&quot;&gt;&lt;span class=&quot;c&quot;&gt;&amp;lt;!-- web.xml excerpt --&amp;gt;&lt;/span&gt;
+&lt;span class=&quot;nt&quot;&gt;&amp;lt;login-config&amp;gt;&lt;/span&gt;
+  &lt;span class=&quot;nt&quot;&gt;&amp;lt;auth-method&amp;gt;&lt;/span&gt;FORM&lt;span class=&quot;nt&quot;&gt;&amp;lt;/auth-method&amp;gt;&lt;/span&gt;
+  &lt;span class=&quot;nt&quot;&gt;&amp;lt;realm-name&amp;gt;&lt;/span&gt;realm&lt;span class=&quot;nt&quot;&gt;&amp;lt;/realm-name&amp;gt;&lt;/span&gt;
+  &lt;span class=&quot;nt&quot;&gt;&amp;lt;form-login-config&amp;gt;&lt;/span&gt;
+    &lt;span class=&quot;nt&quot;&gt;&amp;lt;form-login-page&amp;gt;&lt;/span&gt;/login&lt;span class=&quot;nt&quot;&gt;&amp;lt;/form-login-page&amp;gt;&lt;/span&gt;
+    &lt;span class=&quot;nt&quot;&gt;&amp;lt;form-error-page&amp;gt;&lt;/span&gt;/login?error&lt;span class=&quot;nt&quot;&gt;&amp;lt;/form-error-page&amp;gt;&lt;/span&gt;
+  &lt;span class=&quot;nt&quot;&gt;&amp;lt;/form-login-config&amp;gt;&lt;/span&gt;
+&lt;span class=&quot;nt&quot;&gt;&amp;lt;/login-config&amp;gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;The &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;realm-name&lt;/code&gt; indicates the &lt;em&gt;LDAP realm name&lt;/em&gt;. Users are stored there, and we
+really don’t care about the details. The realm name should be provided by the
+application server administrators.&lt;/p&gt;
+
+&lt;p&gt;An additional &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;form-login-config&lt;/code&gt; is required, specifying the login and error
+page URLs, where the user will be automatically redirected when unauthenticated,
+or when the credentials don’t match, respectively.&lt;/p&gt;
+
+&lt;p&gt;Over at our login page, we would need an HTML form. The &lt;a href=&quot;https://javaee.github.io/servlet-spec/downloads/servlet-3.1/Final/servlet-3_1-final.pdf&quot;&gt;servlet spec&lt;/a&gt; offers
+an example of how that might look like:&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-html&quot; data-lang=&quot;html&quot;&gt;&lt;span class=&quot;nt&quot;&gt;&amp;lt;form&lt;/span&gt; &lt;span class=&quot;na&quot;&gt;method=&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;POST&quot;&lt;/span&gt; &lt;span class=&quot;na&quot;&gt;action=&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;j_security_check&quot;&lt;/span&gt;&lt;span class=&quot;nt&quot;&gt;&amp;gt;&lt;/span&gt;
+  &lt;span class=&quot;nt&quot;&gt;&amp;lt;input&lt;/span&gt; &lt;span class=&quot;na&quot;&gt;type=&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;text&quot;&lt;/span&gt; &lt;span class=&quot;na&quot;&gt;name=&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;j_username&quot;&lt;/span&gt;&lt;span class=&quot;nt&quot;&gt;&amp;gt;&lt;/span&gt;
+  &lt;span class=&quot;nt&quot;&gt;&amp;lt;input&lt;/span&gt; &lt;span class=&quot;na&quot;&gt;type=&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;password&quot;&lt;/span&gt; &lt;span class=&quot;na&quot;&gt;name=&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;j_password&quot;&lt;/span&gt; &lt;span class=&quot;na&quot;&gt;autocomplete=&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;off&quot;&lt;/span&gt;&lt;span class=&quot;nt&quot;&gt;&amp;gt;&lt;/span&gt;
+&lt;span class=&quot;nt&quot;&gt;&amp;lt;/form&amp;gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;h3 id=&quot;defining-the-roles&quot;&gt;Defining the Roles&lt;/h3&gt;
+
+&lt;p&gt;One last piece of configuration we can specify in the deployment descriptor is
+the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;security-role&lt;/code&gt; element. We use it to define—well—security roles (with
+an optional description for each one):&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-xml&quot; data-lang=&quot;xml&quot;&gt;&lt;span class=&quot;c&quot;&gt;&amp;lt;!-- web.xml excerpt --&amp;gt;&lt;/span&gt;
+&lt;span class=&quot;nt&quot;&gt;&amp;lt;security-role&amp;gt;&lt;/span&gt;
+  &lt;span class=&quot;nt&quot;&gt;&amp;lt;description&amp;gt;&lt;/span&gt;Application Administrator&lt;span class=&quot;nt&quot;&gt;&amp;lt;/description&amp;gt;&lt;/span&gt;
+  &lt;span class=&quot;nt&quot;&gt;&amp;lt;role-name&amp;gt;&lt;/span&gt;ROLE_ADMIN&lt;span class=&quot;nt&quot;&gt;&amp;lt;/role-name&amp;gt;&lt;/span&gt;
+&lt;span class=&quot;nt&quot;&gt;&amp;lt;/security-role&amp;gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;Do notice I added the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;ROLE_&lt;/code&gt; prefix to the role name. If you’ve ever worked
+with Spring Security before, you know that’s a naming convention.&lt;/p&gt;
+
+&lt;h2 id=&quot;spring-security-configuration&quot;&gt;Spring Security Configuration&lt;/h2&gt;
+
+&lt;p&gt;That’s it for the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;web.xml&lt;/code&gt;, Spring Security takes care of the rest. For this
+step I prefer the Java configuration over XML. It consists of overriding the
+&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;configure&lt;/code&gt; method:&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-java&quot; data-lang=&quot;java&quot;&gt;&lt;span class=&quot;kd&quot;&gt;protected&lt;/span&gt; &lt;span class=&quot;kt&quot;&gt;void&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;configure&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nc&quot;&gt;HttpSecurity&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;http&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;kd&quot;&gt;throws&lt;/span&gt; &lt;span class=&quot;nc&quot;&gt;Exception&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;{&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;http&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;na&quot;&gt;authorizeRequests&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;requests&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;-&amp;gt;&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;requests&lt;/span&gt;
+        &lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;na&quot;&gt;antMatchers&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;/admin/**&quot;&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;).&lt;/span&gt;&lt;span class=&quot;na&quot;&gt;hasRole&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;ADMIN&quot;&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt;
+        &lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;na&quot;&gt;anyRequest&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;().&lt;/span&gt;&lt;span class=&quot;na&quot;&gt;permitAll&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;()&lt;/span&gt;
+    &lt;span class=&quot;o&quot;&gt;);&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;http&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;na&quot;&gt;jee&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;jee&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;-&amp;gt;&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;jee&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;na&quot;&gt;mappableAuthorities&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;ROLE_ADMIN&quot;&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;));&lt;/span&gt;
+&lt;span class=&quot;o&quot;&gt;}&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;Here I’m securing the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;/admin/**&lt;/code&gt; route so only the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;ADMIN&lt;/code&gt; role can access it
+(the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;ROLE_&lt;/code&gt; prefix is added automatically), while the rest is allowed to
+anyone. immediately after that is where we tell Spring Security to integrate
+with the Java EE container authentication (the &lt;a href=&quot;https://docs.spring.io/spring-security/site/docs/5.3.2.RELEASE/reference/html5/#servlet-preauth&quot;&gt;docs&lt;/a&gt; refer to this scenario
+as &lt;em&gt;pre-authentication&lt;/em&gt;), importing the previously defined roles via the
+&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;mappableAuthorities&lt;/code&gt; method.&lt;/p&gt;
+
+&lt;p&gt;Spring Security is highly customizable, the documentation has all the classes
+that can be extended to modify the default behaviour, such as loading certain
+user information from a database (email address, full name, etc.) using a custom
+&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;UserDetailsService&lt;/code&gt;.&lt;/p&gt;
+
+&lt;h2 id=&quot;the-results&quot;&gt;The Results&lt;/h2&gt;
+
+&lt;p&gt;Let’s do a couple of test requests to verify our authentication system is
+working.  Jetty allows to configure a security realm in a properties file, which
+is handy for local development, you can learn more &lt;a href=&quot;https://wiki.eclipse.org/Jetty/Tutorial/Realms&quot;&gt;here&lt;/a&gt;. I have the
+following controller methods:&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-java&quot; data-lang=&quot;java&quot;&gt;&lt;span class=&quot;nd&quot;&gt;@GetMapping&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;/hello&quot;&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt;
+&lt;span class=&quot;kd&quot;&gt;public&lt;/span&gt; &lt;span class=&quot;nc&quot;&gt;String&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;hello&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;()&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;{&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;return&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&quot;Hello&quot;&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;;&lt;/span&gt;
+&lt;span class=&quot;o&quot;&gt;}&lt;/span&gt;
+
+&lt;span class=&quot;nd&quot;&gt;@GetMapping&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;/admin/hello&quot;&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt;
+&lt;span class=&quot;kd&quot;&gt;public&lt;/span&gt; &lt;span class=&quot;nc&quot;&gt;String&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;helloAdmin&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;()&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;{&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;return&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&quot;Hello, Admin&quot;&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;;&lt;/span&gt;
+&lt;span class=&quot;o&quot;&gt;}&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-bash&quot; data-lang=&quot;bash&quot;&gt;&lt;span class=&quot;nv&quot;&gt;$ &lt;/span&gt;curl localhost:8080/app/hello/
+Hello
+
+&lt;span class=&quot;nv&quot;&gt;$ &lt;/span&gt;curl localhost:8080/app/admin/hello/ | python &lt;span class=&quot;nt&quot;&gt;-m&lt;/span&gt; json.tool
+&lt;span class=&quot;o&quot;&gt;{&lt;/span&gt;
+    &lt;span class=&quot;s2&quot;&gt;&quot;timestamp&quot;&lt;/span&gt;: &lt;span class=&quot;s2&quot;&gt;&quot;2020-05-30T06:33:41.250+00:00&quot;&lt;/span&gt;,
+    &lt;span class=&quot;s2&quot;&gt;&quot;status&quot;&lt;/span&gt;: 403,
+    &lt;span class=&quot;s2&quot;&gt;&quot;error&quot;&lt;/span&gt;: &lt;span class=&quot;s2&quot;&gt;&quot;Forbidden&quot;&lt;/span&gt;,
+    &lt;span class=&quot;s2&quot;&gt;&quot;message&quot;&lt;/span&gt;: &lt;span class=&quot;s2&quot;&gt;&quot;&quot;&lt;/span&gt;,
+    &lt;span class=&quot;s2&quot;&gt;&quot;path&quot;&lt;/span&gt;: &lt;span class=&quot;s2&quot;&gt;&quot;/app/admin/hello&quot;&lt;/span&gt;
+&lt;span class=&quot;o&quot;&gt;}&lt;/span&gt;
+
+&lt;span class=&quot;nv&quot;&gt;$ &lt;/span&gt;curl &lt;span class=&quot;nt&quot;&gt;-c&lt;/span&gt; - &lt;span class=&quot;nt&quot;&gt;-d&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;j_username=admin&amp;amp;j_password=pass&quot;&lt;/span&gt; &lt;span class=&quot;se&quot;&gt;\&lt;/span&gt;
+localhost:8080/app/j_security_check/
+&lt;span class=&quot;c&quot;&gt;# Output shortened for brevity&lt;/span&gt;
+JSESSIONID node0gl4hg0zrigmg3v4ywapwo959.node0
+
+&lt;span class=&quot;nv&quot;&gt;$ &lt;/span&gt;curl &lt;span class=&quot;nt&quot;&gt;-b&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;JSESSIONID=node0gl4hg0zrigmg3v4ywapwo959.node0&quot;&lt;/span&gt; &lt;span class=&quot;se&quot;&gt;\&lt;/span&gt;
+localhost:8080/app/admin/hello/
+Hello, Admin
+&lt;span class=&quot;c&quot;&gt;# Subsequent requests may 403'd as the cookie value has changed&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;Spring Security has its own JSON-formatted error messages, which are convenient
+if you’re working with JavaScript.&lt;/p&gt;
+
+&lt;h2 id=&quot;conclusion&quot;&gt;Conclusion&lt;/h2&gt;
+
+&lt;p&gt;You can see just how little configuration Spring Security actually requires, but
+how much functionality you’re getting back! Plus, container authentication
+delegates the security to the application server, making it relatively easier to
+implement.&lt;/p&gt;</content><author><name></name></author><summary type="html">Spring Security is a framework full of solid features, most of them working nearly out of the box. Yet it’s still flexible enough to adapt to your particular requirements. In this article I’ll demonstrate how to integrate your Spring application authentication with a servlet container, such as WebSphere Application Server (WAS) or Tomcat, using Spring Security.</summary></entry><entry><title type="html">Setting a Correct Value in a select Element</title><link href="/setting-correct-value-select/" rel="alternate" type="text/html" title="Setting a Correct Value in a select Element" /><published>2019-10-20T00:00:00+00:00</published><updated>2019-10-20T00:00:00+00:00</updated><id>/setting-correct-value-select</id><content type="html" xml:base="/setting-correct-value-select/">&lt;script&gt;
+  function choosePizza() {
+    let selectEl = document.getElementById('sel-1');
+    selectEl.value = 'pizza';
+  }
+
+  function choosePizzaFixed() {
+    let selectEl = document.getElementById('sel-2');
+    selectEl.value = 'pizza';
+
+    if (selectEl.selectedIndex === -1) {
+      selectEl.value = '';
+    }
+  }
+&lt;/script&gt;
+
+&lt;p&gt;Setting the value of a &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;&amp;lt;select&amp;gt;&lt;/code&gt; element it’s quite easy:&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-javascript&quot; data-lang=&quot;javascript&quot;&gt;&lt;span class=&quot;kd&quot;&gt;let&lt;/span&gt; &lt;span class=&quot;nx&quot;&gt;selectEl&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;document&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nx&quot;&gt;querySelector&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;dl&quot;&gt;'&lt;/span&gt;&lt;span class=&quot;s1&quot;&gt;select#favorite-food&lt;/span&gt;&lt;span class=&quot;dl&quot;&gt;'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+&lt;span class=&quot;nx&quot;&gt;selectEl&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nx&quot;&gt;value&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;dl&quot;&gt;'&lt;/span&gt;&lt;span class=&quot;s1&quot;&gt;pizza&lt;/span&gt;&lt;span class=&quot;dl&quot;&gt;'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;Yet there’s a particular &lt;abbr title=&quot;User experience&quot;&gt;UX&lt;/abbr&gt; detail that we might have overlooked:
+&lt;strong&gt;what if the value is not an existing option?&lt;/strong&gt;&lt;/p&gt;
+
+&lt;h1 id=&quot;the-problem&quot;&gt;The Problem&lt;/h1&gt;
+
+&lt;p&gt;Consider an instance where we have to set the value of a &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;&amp;lt;select&amp;gt;&lt;/code&gt;
+programmatically. In my case, I had to preserve the user’s previously
+selected option right after updating the drop-down list with a new set
+of options.&lt;/p&gt;
+
+&lt;p&gt;The problem is when the option is not listed (maybe it’s no longer
+available):&lt;/p&gt;
+
+&lt;div class=&quot;snippet&quot;&gt;
+  &lt;select id=&quot;sel-1&quot;&gt;
+    &lt;option value=&quot;&quot; disabled=&quot;&quot; selected=&quot;&quot;&gt;What's your favorite food?&lt;/option&gt;
+    &lt;option value=&quot;chocolate&quot;&gt;Chocolate&lt;/option&gt;
+    &lt;option value=&quot;ice-cream&quot;&gt;Ice Cream&lt;/option&gt;
+    &lt;option value=&quot;fries&quot;&gt;French Fries&lt;/option&gt;
+  &lt;/select&gt;
+
+  &lt;button type=&quot;button&quot; onclick=&quot;choosePizza()&quot;&gt;Choose Pizza&lt;/button&gt;
+&lt;/div&gt;
+
+&lt;p&gt;The &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;&amp;lt;select&amp;gt;&lt;/code&gt; is obviously left at an invalid state (its value is
+&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;&quot;&quot;&lt;/code&gt;), which means existing validation mechanisms still work as
+intended. However, we’re left with an empty select, there’s no
+placeholder text to guide the user.&lt;/p&gt;
+
+&lt;h1 id=&quot;the-solution&quot;&gt;The Solution&lt;/h1&gt;
+
+&lt;p&gt;Fortunately the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;HTMLSelectElement&lt;/code&gt; interface has a
+&lt;a href=&quot;https://developer.mozilla.org/en-US/docs/Web/API/HTMLSelectElement/selectedIndex&quot;&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;selectedIndex&lt;/code&gt;&lt;/a&gt; property with a value of &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;-1&lt;/code&gt; when no
+option is selected, which is exactly our case. We can leverage this
+property to perform a quick validation:&lt;/p&gt;
+
+&lt;div class=&quot;snippet&quot;&gt;
+  &lt;select id=&quot;sel-2&quot;&gt;
+    &lt;option value=&quot;&quot; disabled=&quot;&quot; selected=&quot;&quot;&gt;What's your favorite food?&lt;/option&gt;
+    &lt;option value=&quot;chocolate&quot;&gt;Chocolate&lt;/option&gt;
+    &lt;option value=&quot;ice-cream&quot;&gt;Ice Cream&lt;/option&gt;
+    &lt;option value=&quot;fries&quot;&gt;French Fries&lt;/option&gt;
+  &lt;/select&gt;
+
+  &lt;button type=&quot;button&quot; onclick=&quot;choosePizzaFixed()&quot;&gt;Choose Pizza&lt;/button&gt;
+&lt;/div&gt;</content><author><name></name></author></entry><entry><title type="html">cherry-pick Considered Harmful</title><link href="/git-cherry-pick-harmful/" rel="alternate" type="text/html" title="cherry-pick Considered Harmful" /><published>2019-05-26T00:00:00+00:00</published><updated>2019-05-26T00:00:00+00:00</updated><id>/git-cherry-pick-harmful</id><content type="html" xml:base="/git-cherry-pick-harmful/">&lt;p&gt;or: How I Learned to Stop cherry-picking and Love the merge&lt;/p&gt;
+
+&lt;p&gt;Funny headlines aside, this post is gonna be a small rant as to why I find
+cherry-picking particularly annoying when working with &lt;a href=&quot;https://nvie.com/posts/a-successful-git-branching-model/&quot;&gt;Gitflow&lt;/a&gt;.&lt;/p&gt;
+
+&lt;p&gt;Gitflow is a good idea! I’m just not a huge fan of its &lt;del&gt;horrifying&lt;/del&gt; humorous
+results in the log, as opposed to a much linear history:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;https://i.imgur.com/Gh4ELWi.png&quot; alt=&quot;Humorous Log&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;Now, if you couple that with the bad habit of cherry-picking hotfix or bug fix
+commits, things start to get a lot messier. So why exactly is cherry-pick a bad
+idea? Because &lt;strong&gt;it further obfuscates your commit history&lt;/strong&gt;.&lt;/p&gt;
+
+&lt;p&gt;Consider the following example: I just committed a change on &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;hotfix/issue658&lt;/code&gt;,
+and I need to apply it to both &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;master&lt;/code&gt; and &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;dev&lt;/code&gt;:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;https://i.imgur.com/XqmuO1H.png&quot; alt=&quot;Example 1&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;Suppose I cherry-pick the resulting commit to both of those branches:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;https://i.imgur.com/z16kVHc.png&quot; alt=&quot;Example 2&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;It might look OK at first glance, but watch what happens when I try to update
+&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;master&lt;/code&gt; to a new version:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;https://i.imgur.com/fQfvMGk.png&quot; alt=&quot;Example 3&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;We got duplicated commits! Git treats them as separate units because they each
+have different IDs (that’s what cherry-pick does, it creates a new commit each
+time), thus, my &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;hotfix&lt;/code&gt; branch it’s not merged into any of my main branches.
+This commit history does not accurately reflect my original intent.&lt;/p&gt;
+
+&lt;p&gt;Contrast that to what a correct merge strategy of the previous example would
+look like:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;https://i.imgur.com/tf7Eozu.png&quot; alt=&quot;Example 4&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;I regard maintaining a reasonably sound commit history as important as writing
+good code, given how git can also be used as an auditing tool, believe me, it
+can save you a lot of trouble in the long run. Do yourself a favor an try to
+avoid cherry-picking as much as you can!&lt;/p&gt;</content><author><name></name></author><summary type="html">or: How I Learned to Stop cherry-picking and Love the merge</summary></entry><entry><title type="html">How to Install Oracle JDK in Ubuntu</title><link href="/how-to-install-oracle-jdk-ubuntu/" rel="alternate" type="text/html" title="How to Install Oracle JDK in Ubuntu" /><published>2018-03-18T00:00:00+00:00</published><updated>2018-03-18T00:00:00+00:00</updated><id>/how-to-install-oracle-jdk-ubuntu</id><content type="html" xml:base="/how-to-install-oracle-jdk-ubuntu/">&lt;p&gt;I’ve been a Windows user almost all my life, mainly because I didn’t know
+better, and I wasn’t into computers either until later on. When I made the
+switch to Ubuntu, one of the pet peeves I had was installing Java. Sure,
+installing OpenJDK is very easy, since there’s already a package for it, but
+what if you need Oracle’s?&lt;/p&gt;
+
+&lt;p&gt;There are a couple different ways of doing it, but so far this is my preferred
+one. It involves 3 steps:&lt;/p&gt;
+
+&lt;ol&gt;
+  &lt;li&gt;Download the binaries directly from Oracle’s website&lt;/li&gt;
+  &lt;li&gt;Place the binaries in the appropriate directory&lt;/li&gt;
+  &lt;li&gt;Set &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;JAVA_HOME&lt;/code&gt; and &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;PATH&lt;/code&gt; accordingly&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;p&gt;Ok, let’s begin.&lt;/p&gt;
+
+&lt;h2 id=&quot;step-1-downloading-the-binaries&quot;&gt;Step 1: Downloading the Binaries&lt;/h2&gt;
+
+&lt;p&gt;Head over to Oracle’s website and download the JDK. Remember to &lt;a href=&quot;https://itsfoss.com/checksum-tools-guide-linux/&quot;&gt;verify the
+checksum&lt;/a&gt;!&lt;/p&gt;
+
+&lt;h2 id=&quot;step-2-choosing-the-appropriate-directory&quot;&gt;Step 2: Choosing the Appropriate Directory&lt;/h2&gt;
+
+&lt;p&gt;What directory is appropriate for a system-wide installation of Java? According
+to &lt;a href=&quot;http://www.pathname.com/fhs/pub/fhs-2.3.html#OPTADDONAPPLICATIONSOFTWAREPACKAGES&quot;&gt;FHS&lt;/a&gt; &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;opt/&lt;/code&gt; fits just well. Go ahead and extract the contents of the
+downloaded archive there.&lt;/p&gt;
+
+&lt;h2 id=&quot;step-3-setting-the-environment-variables&quot;&gt;Step 3: Setting the Environment Variables&lt;/h2&gt;
+
+&lt;p&gt;Where do we declare &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;JAVA_HOME&lt;/code&gt; and modify our &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;PATH&lt;/code&gt;? It can’t be in
+&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;~/.bashrc&lt;/code&gt; or &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;~/.profile&lt;/code&gt; as it’s single user only and limited to a CLI shell.
+What about a graphical shell?&lt;/p&gt;
+
+&lt;p&gt;I’ve found that the best location to set up environment variables is in
+&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;/etc/profile.d&lt;/code&gt;. According to the &lt;a href=&quot;https://help.ubuntu.com/community/EnvironmentVariables#A.2Fetc.2Fprofile.d.2F.2A.sh&quot;&gt;Ubuntu Wiki&lt;/a&gt;:&lt;/p&gt;
+
+&lt;blockquote&gt;
+  &lt;p&gt;Files with the .sh extension in the /etc/profile.d directory get executed
+whenever a bash login shell is entered (e.g. when logging in from the console
+or over ssh), as well as by the DisplayManager when the desktop session loads.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;Which means the variables will be set in both CLI shells and graphical
+environments, which is exactly what we want!&lt;/p&gt;
+
+&lt;p&gt;Here’s what an &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;/etc/profile.d/java.sh&lt;/code&gt; example might look like:&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-bash&quot; data-lang=&quot;bash&quot;&gt;&lt;span class=&quot;nb&quot;&gt;export &lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;JAVA_HOME&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;/opt/jdk1.8.0_161
+&lt;span class=&quot;nv&quot;&gt;PATH&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;$JAVA_HOME&lt;/span&gt;/bin:&lt;span class=&quot;nv&quot;&gt;$PATH&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;That’s it! Log out and back in to apply the changes. As usual, run &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;java
+-version&lt;/code&gt; to test if Java was installed correctly:&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;$ java -version
+java version &quot;1.8.0_161&quot;
+Java(TM) SE Runtime Environment (build 1.8.0_161-b12)
+Java HotSpot(TM) 64-Bit Server VM (build 25.161-b12, mixed mode)
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;There you go, happy programming!&lt;/p&gt;</content><author><name></name></author><summary type="html">I’ve been a Windows user almost all my life, mainly because I didn’t know better, and I wasn’t into computers either until later on. When I made the switch to Ubuntu, one of the pet peeves I had was installing Java. Sure, installing OpenJDK is very easy, since there’s already a package for it, but what if you need Oracle’s?</summary></entry><entry><title type="html">Handling dotfiles with YADM</title><link href="/handling-dotfiles-with-yadm/" rel="alternate" type="text/html" title="Handling dotfiles with YADM" /><published>2017-10-22T00:00:00+00:00</published><updated>2017-10-22T00:00:00+00:00</updated><id>/handling-dotfiles-with-yadm</id><content type="html" xml:base="/handling-dotfiles-with-yadm/">&lt;p&gt;Nothing makes me feel more at &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;$HOME&lt;/code&gt; than seeing my dotfiles in place.&lt;/p&gt;
+
+&lt;p&gt;Most people keep them in sync via a git repository, usually GitHub, which is
+great because it encourages sharing. I like to look through those repositories
+to seek inspiration (I’m also just curious).&lt;/p&gt;
+
+&lt;p&gt;I used to keep them in sync using &lt;a href=&quot;https://syncthing.net/&quot;&gt;syncthing&lt;/a&gt;, but my
+current setup was limited to LAN only. I needed something that could work over
+the internet.&lt;/p&gt;
+
+&lt;p&gt;I must admit I was a bit skeptic about using a git repository because it meant
+creating a script to symlink the files, figuring out a way to handle different
+environments like macOS and Ubuntu, and manually transfer SSH keys.&lt;/p&gt;
+
+&lt;p&gt;But then I discovered &lt;a href=&quot;https://thelocehiliosan.github.io/yadm/&quot;&gt;YADM: Yet Another Dotfiles
+Manager&lt;/a&gt;, and I was blown away. It
+featured exactly everything I needed in a dotfiles manager:&lt;/p&gt;
+
+&lt;ul&gt;
+  &lt;li&gt;Git under the hood&lt;/li&gt;
+  &lt;li&gt;No symlinking required, as your &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;$HOME&lt;/code&gt; is the working directory&lt;/li&gt;
+  &lt;li&gt;File encryption (via GnuPG)&lt;/li&gt;
+  &lt;li&gt;Alternate files based on the OS&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;With YADM, you only add the files you need synced, and because it’s a glorified
+git wrapper, all the git commands stay the same.&lt;/p&gt;
+
+&lt;p&gt;Perhaps my favorite feature is encryption, and it’s super easy to use. Simply
+create a &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;~/.yadm/encrypt&lt;/code&gt; file, and write some glob patterns matching the files
+you want encrypted so they’re not stored as plain text. For instance:&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;.config/secrets
+.ssh/*
+!.ssh/authorized_keys
+!.ssh/known_hosts*
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Then, encrypt the files with: &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;yadm encrypt&lt;/code&gt;. This will create a bundle called
+&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;~/.yadm/files.gpg&lt;/code&gt;, which you can now add to the repo. If you’d like to decrypt
+the files, &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;yadm decrypt&lt;/code&gt; does the job.&lt;/p&gt;
+
+&lt;p&gt;I highly recommend this tool, I think it’s an elegant way to handle dotfiles.&lt;/p&gt;</content><author><name></name></author><summary type="html">Nothing makes me feel more at $HOME than seeing my dotfiles in place.</summary></entry><entry><title type="html">Dockerfile: CMD vs. ENTRYPOINT</title><link href="/docker-cmd-vs-entrypoint/" rel="alternate" type="text/html" title="Dockerfile: CMD vs. ENTRYPOINT" /><published>2017-08-22T00:00:00+00:00</published><updated>2017-08-22T00:00:00+00:00</updated><id>/docker-cmd-vs-entrypoint</id><content type="html" xml:base="/docker-cmd-vs-entrypoint/">&lt;p&gt;Docker provides a couple of instructions to specify what a container
+does when you want to &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;docker run&lt;/code&gt; it: &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;CMD&lt;/code&gt; and &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;ENTRYPOINT&lt;/code&gt;.&lt;/p&gt;
+
+&lt;p&gt;These two provide a somewhat similar functionality but are actually
+quite different fundamentally. According to the &lt;a href=&quot;https://docs.docker.com/engine/reference/builder/&quot;&gt;Dockerfile
+reference&lt;/a&gt;, &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;CMD&lt;/code&gt;’s entire purpose is to provide &lt;strong&gt;defaults&lt;/strong&gt; for an
+executing container, while &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;ENTRYPOINT&lt;/code&gt;’s is being concerned with the
+&lt;strong&gt;configuration&lt;/strong&gt; of said executing container.&lt;/p&gt;
+
+&lt;p&gt;That’s their main purpose. However, depending on the combination of this
+two instructions, we can achieve different use cases.&lt;/p&gt;
+
+&lt;h2 id=&quot;cmd&quot;&gt;CMD&lt;/h2&gt;
+
+&lt;p&gt;Let’s take a look at &lt;a href=&quot;https://github.com/debuerreotype/docker-debian-artifacts/blob/42bec5bc2f5a76ceeb125bc4e66d6f70a95e933f/stretch/slim/Dockerfile&quot;&gt;Debian Stretch Slim’s Dockerfile&lt;/a&gt;:&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;FROM scratch
+ADD rootfs.tar.xz /
+CMD [&quot;bash&quot;]
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Notice how there’s no &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;ENTRYPOINT&lt;/code&gt;. When only &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;CMD&lt;/code&gt; is present, the
+default behaviour will be to execute whatever is specified by &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;CMD&lt;/code&gt;,
+bash in this case.&lt;/p&gt;
+
+&lt;p&gt;So, when I &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;docker run debian:stretch-slim&lt;/code&gt;, the container will run bash
+and exit.&lt;/p&gt;
+
+&lt;p&gt;Wouldn’t &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;ENTRYPOINT&lt;/code&gt; achieve the same thing? Why do we need &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;CMD&lt;/code&gt; for
+then? Well, &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;CMD&lt;/code&gt; has a special property, something I like to call &lt;em&gt;soft
+exec&lt;/em&gt;, which is basically the ability to override the command. Take
+a look:&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;$ docker run debian:stretch-slim echo Hello!
+Hello!
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;The container executed &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;echo Hello!&lt;/code&gt; instead of the default command.&lt;/p&gt;
+
+&lt;h2 id=&quot;entrypoint&quot;&gt;ENTRYPOINT&lt;/h2&gt;
+
+&lt;p&gt;Let’s contrast the previous behaviour with an &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;ENTRYPOINT&lt;/code&gt; instruction.
+Using the following Dockerfile:&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;FROM debian:stretch-slim
+ENTRYPOINT [&quot;echo&quot; &quot;Hello,&quot;]
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;I’m gonna build a &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;entrypoint-test&lt;/code&gt; image and run it:&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;$ docker run entrypoint-test
+Hello,
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Okay, so far things look samey. But watch this!&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;$ docker run entrypoint-test World!
+Hello, World!
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;I couldn’t override the command this time! Instead, the container used
+it as &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;echo&lt;/code&gt;’s input. This is what I call the &lt;em&gt;hard exec&lt;/em&gt;: &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;ENTRYPOINT&lt;/code&gt;
+will always be executed, regardless.&lt;/p&gt;
+
+&lt;h2 id=&quot;entrypoint--cmd&quot;&gt;ENTRYPOINT + CMD&lt;/h2&gt;
+
+&lt;p&gt;As I mentioned, &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;CMD&lt;/code&gt; provides default arguments to &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;ENTRYPOINT&lt;/code&gt;.
+Consider the following Dockerfile:&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;FROM debian:stretch-slim
+CMD [&quot;World!&quot;]
+ENTRYPOINT [&quot;echo&quot;, &quot;Hello,&quot;]
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Having built it as &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;entrypoint-cmd-test&lt;/code&gt;, let’s run it:&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;$ docker run entrypoint-cmd-test
+Hello, World!
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;CMD&lt;/code&gt; provided the default &lt;em&gt;World!&lt;/em&gt; argument to echo. What if we pass an
+argument of our own?&lt;/p&gt;
+
+&lt;div class=&quot;language-plaintext highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;$ docker run entrypoint-cmd-test Daniel!
+Hello, Daniel!
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;We have successfully overridden the default parameters!&lt;/p&gt;
+
+&lt;h2 id=&quot;conclusion&quot;&gt;Conclusion&lt;/h2&gt;
+
+&lt;p&gt;Both &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;CMD&lt;/code&gt; &amp;amp; &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;ENTRYPOINT&lt;/code&gt; bring their own stuff to the table, but at the
+end of the day, like most things, it’s up to you to decide which use
+case fits your needs! I hope this has helped clear up the confusion!&lt;/p&gt;</content><author><name></name></author><summary type="html">Docker provides a couple of instructions to specify what a container does when you want to docker run it: CMD and ENTRYPOINT.</summary></entry><entry><title type="html">Using vimrc Files per Directory</title><link href="/using-vimrc-files-per-directory/" rel="alternate" type="text/html" title="Using vimrc Files per Directory" /><published>2017-08-22T00:00:00+00:00</published><updated>2017-08-22T00:00:00+00:00</updated><id>/using-vimrc-files-per-directory</id><content type="html" xml:base="/using-vimrc-files-per-directory/">&lt;p&gt;How many times have you wished you could have a different vimrc
+configuration per directory? I know I have, many times! Specially when
+you work on different projects which might require different settings.
+For instance, I like to enable spell checking when working on my school
+notes, but I don’t wanna &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;set spell spelllang=es,en&lt;/code&gt; every time I open
+a file for editing.&lt;/p&gt;
+
+&lt;p&gt;Introducing &lt;a href=&quot;https://github.com/embear/vim-localvimrc&quot;&gt;Localvimrc&lt;/a&gt; which comes to solve that exact problem!
+Simply keep a &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;.lvimrc&lt;/code&gt; (as per defaults) in the directory you want to
+apply the settings in and voilà!&lt;/p&gt;
+
+&lt;p&gt;Each time you open a file in which a &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;.lvimrc&lt;/code&gt; file is present (from the
+root directory to the current directory), vim will prompt you asking if
+you wanna apply the settings.&lt;/p&gt;
+
+&lt;p&gt;This is a nice way to keep your global vimrc clean and generic, while
+fulfilling individual requirements at the same time!&lt;/p&gt;</content><author><name></name></author><summary type="html">How many times have you wished you could have a different vimrc configuration per directory? I know I have, many times! Specially when you work on different projects which might require different settings. For instance, I like to enable spell checking when working on my school notes, but I don’t wanna set spell spelllang=es,en every time I open a file for editing.</summary></entry><entry><title type="html">Squashing Old References with Django Migrations</title><link href="/squashing-old-references-with-django-migrations/" rel="alternate" type="text/html" title="Squashing Old References with Django Migrations" /><published>2017-06-11T00:00:00+00:00</published><updated>2017-06-11T00:00:00+00:00</updated><id>/squashing-old-references-with-django-migrations</id><content type="html" xml:base="/squashing-old-references-with-django-migrations/">&lt;p&gt;The other day I found a small typo in a function I was referencing in
+the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;upload_to&lt;/code&gt; field option in one of my models. I fixed the nasty
+typo, only to discover I had broken the migrations, as it was also being
+referenced in one of them.&lt;/p&gt;
+
+&lt;p&gt;According to the &lt;a href=&quot;https://docs.djangoproject.com/en/1.11/topics/migrations/#historical-models&quot;&gt;docs&lt;/a&gt;, we can make use of &lt;em&gt;squashing&lt;/em&gt; to
+remove these old references. Here’s how I managed to solve my OCD
+inspired issue.&lt;/p&gt;
+
+&lt;h1 id=&quot;making-the-changes&quot;&gt;Making the Changes&lt;/h1&gt;
+
+&lt;p&gt;Freely apply all the changes that are required, but keep the old references:&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-python&quot; data-lang=&quot;python&quot;&gt;&lt;span class=&quot;kn&quot;&gt;from&lt;/span&gt; &lt;span class=&quot;nn&quot;&gt;django.db&lt;/span&gt; &lt;span class=&quot;kn&quot;&gt;import&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;models&lt;/span&gt;
+
+
+&lt;span class=&quot;c1&quot;&gt;# Old function
+&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;def&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;my_supr_function&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;instance&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;filename&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;):&lt;/span&gt;
+    &lt;span class=&quot;c1&quot;&gt;# Move the implementation to the new function
+&lt;/span&gt;    &lt;span class=&quot;k&quot;&gt;pass&lt;/span&gt;
+
+
+&lt;span class=&quot;c1&quot;&gt;# Renamed function
+&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;def&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;my_super_function&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;instance&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;filename&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;):&lt;/span&gt;
+    &lt;span class=&quot;c1&quot;&gt;# Some advanced code here
+&lt;/span&gt;    &lt;span class=&quot;k&quot;&gt;return&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;2&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;+&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;2&lt;/span&gt;
+
+
+&lt;span class=&quot;k&quot;&gt;class&lt;/span&gt; &lt;span class=&quot;nc&quot;&gt;MyModel&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;models&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;Model&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;):&lt;/span&gt;
+    &lt;span class=&quot;c1&quot;&gt;# Update the 'upload_to' reference here
+&lt;/span&gt;    &lt;span class=&quot;n&quot;&gt;image&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;models&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;ImageField&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;upload_to&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;my_super_function&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;h1 id=&quot;making-the-migrations&quot;&gt;Making the Migrations&lt;/h1&gt;
+
+&lt;p&gt;Tell Django you want to create a new migration based on these changes:&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-bash&quot; data-lang=&quot;bash&quot;&gt;&lt;span class=&quot;nv&quot;&gt;$ &lt;/span&gt;./manage.py makemigrations &lt;span class=&quot;nt&quot;&gt;--name&lt;/span&gt; rename-function&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;h1 id=&quot;squashing&quot;&gt;Squashing&lt;/h1&gt;
+
+&lt;p&gt;We now have a brand new migration which no longer references
+&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;my_supr_function&lt;/code&gt; (the function with the typo). We can know squash our
+migrations from the point where it was first referenced, up to this
+newly created migration.&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-bash&quot; data-lang=&quot;bash&quot;&gt;&lt;span class=&quot;nv&quot;&gt;$ &lt;/span&gt;./manage.py squashmigrations my_app 0005 0009&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;h1 id=&quot;applying-migrations&quot;&gt;Applying migrations&lt;/h1&gt;
+
+&lt;p&gt;We can’t go around life having unimplemented functions whose names have
+typos, our end goal here is to get rid of them, but unfortunately there
+is one more step required before we can do that.&lt;/p&gt;
+
+&lt;p&gt;Go ahead and commit your changes, and apply the migrations on any
+production server you have, plus your development machine of course.&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-bash&quot; data-lang=&quot;bash&quot;&gt;&lt;span class=&quot;nv&quot;&gt;$ &lt;/span&gt;./manage.py migrate&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;h1 id=&quot;cleaning-up&quot;&gt;Cleaning Up&lt;/h1&gt;
+
+&lt;p&gt;Once migrations are up to date, it is safe to remove not only the typo
+function, but all the squashed migrations as well. Peace at last.&lt;/p&gt;</content><author><name></name></author><summary type="html">The other day I found a small typo in a function I was referencing in the upload_to field option in one of my models. I fixed the nasty typo, only to discover I had broken the migrations, as it was also being referenced in one of them.</summary></entry><entry><title type="html">VirtualBox: Compacting Disks</title><link href="/virtualbox-compacting-disks/" rel="alternate" type="text/html" title="VirtualBox: Compacting Disks" /><published>2017-01-29T00:00:00+00:00</published><updated>2017-01-29T00:00:00+00:00</updated><id>/virtualbox-compacting-disks</id><content type="html" xml:base="/virtualbox-compacting-disks/">&lt;p&gt;VirtualBox’s dynamically allocated disks are great because they start
+small, and only stretch when they need to. Thing is, they don’t shrink
+back &lt;em&gt;automagically&lt;/em&gt; once the space is freed, they require a little
+push. This is what VirtualBox calls &lt;em&gt;compacting&lt;/em&gt;, and it’s a great way
+to trim your machines so they only use as much space as they actually
+need.&lt;/p&gt;
+
+&lt;p&gt;In order to shrink back a disk file, it has to be &lt;strong&gt;defragmented&lt;/strong&gt; (if
+necessary), and its empty space &lt;strong&gt;filled with zeroes&lt;/strong&gt;.&lt;/p&gt;
+
+&lt;p&gt;Windows has a built-in defragmenter, and the &lt;a href=&quot;https://technet.microsoft.com/en-us/sysinternals/sdelete.aspx&quot;&gt;SDelete&lt;/a&gt; tool can be
+used to fill unused space with zeroes. GNU/Linux users have a similar
+tool: &lt;em&gt;zerofree&lt;/em&gt;, it should be available from your distribution’s
+repositories.&lt;/p&gt;
+
+&lt;p&gt;Once the disk is ready, we use the &lt;a href=&quot;https://www.virtualbox.org/manual/ch08.html&quot;&gt;VBoxManage&lt;/a&gt; tool to get the job
+done:&lt;/p&gt;
+
+&lt;p&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;$ VBoxManage modifymedium --compact &amp;lt;uuid | filename&amp;gt;&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;Here, we use the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;modifymedium&lt;/code&gt; command to compact the disk identified
+either by its &lt;a href=&quot;https://en.wikipedia.org/wiki/Universally_unique_identifier&quot;&gt;UUID&lt;/a&gt; or its filename.&lt;/p&gt;
+
+&lt;p&gt;To get a list of disk files (and their respective UUIDs) available in
+your computer, you can execute the following command:&lt;/p&gt;
+
+&lt;p&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;$ VBoxManage list hdds&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;modifymedium&lt;/code&gt; is also capable of expanding your disks’ virtual size, in
+case the machine needs much more space than the initial limit provided,
+using the &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;--resize &amp;lt;megabytes&amp;gt;&lt;/code&gt; option.&lt;/p&gt;</content><author><name></name></author><summary type="html">VirtualBox’s dynamically allocated disks are great because they start small, and only stretch when they need to. Thing is, they don’t shrink back automagically once the space is freed, they require a little push. This is what VirtualBox calls compacting, and it’s a great way to trim your machines so they only use as much space as they actually need.</summary></entry></feed>
