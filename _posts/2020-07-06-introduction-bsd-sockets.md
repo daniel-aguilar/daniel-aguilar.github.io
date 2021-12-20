@@ -150,4 +150,4 @@ I hope this explanation was clear. I tried to keep the code concise by removing
 includes, error handling noise and other off topic details, but I encourage you
 to download the [full example][1] and try it yourself.
 
-[1]: https://github.com/daniel-aguilar/daniel-aguilar.github.io/tree/master/samples/bsd_sockets
+[1]: https://github.com/daniel-aguilar/daniel-aguilar.github.io/tree/master/samples/bsd-sockets
