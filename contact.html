@@ -43,9 +43,10 @@ title: Contact
   <textarea id="message" name="message" placeholder="Maximum 1000 characters"
       required></textarea>
   <small id="error">Error: Message is too long (<span>0</span>/1000)</small>
-  <div class="g-recaptcha"
-      data-sitekey="6Lc2Kl4UAAAAACU5OxBJEjQ_FB_brMw1bXzphH3C"
-      data-size="invisible" data-callback="submit">
-  </div>
-  <button>Send Message</button>
+  <button class="g-recaptcha"
+      data-sitekey="6LdNDdApAAAAAJrO3vCFkHT0vCozswPPzTEXu6RR"
+      data-callback="onSubmit"
+      data-action="submit">
+    Send Message
+  </button>
 </form>
