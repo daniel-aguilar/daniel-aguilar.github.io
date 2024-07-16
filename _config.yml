@@ -5,7 +5,7 @@ exclude: [samples]
 # Minima settings
 
 title: Daniel's Blog
-description: Show me the code
+description: There will be code
 show_excerpts: true
 github_username: daniel-aguilar
 linkedin_username: dan-aguilar
