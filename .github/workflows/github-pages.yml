@@ -14,7 +14,7 @@ jobs:
       - name: Deploy
         run: |
           cd _site
-          git init
+          git init --initial-branch=main
           git config user.name Octocat
           git config user.email "octocat@users.noreply.github.com"
           git add -A
