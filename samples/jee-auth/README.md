@@ -1,5 +1,6 @@
 # JEE Authentication
 
 Run it with Maven:
-
-`$ mvn jetty:run`
+```
+mvn jetty:run
+```
