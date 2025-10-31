@@ -1,11 +1,10 @@
+title: Daniel's Blog
+description: There will be code
 permalink: "/:title/"
 theme: minima
 exclude: [samples]
 
 # Minima settings
-
-title: Daniel's Blog
-description: There will be code
 show_excerpts: true
 github_username: daniel-aguilar
 linkedin_username: dan-aguilar
