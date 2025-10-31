@@ -14,9 +14,9 @@ jobs:
       - name: Deploy
         run: |
           cd _site
-          git init --initial-branch=main
+          git switch --orphan gh-pages
           git config user.name Octocat
           git config user.email "octocat@users.noreply.github.com"
-          git add -A
+          git --work-tree . add -A
           git commit -qm "Deploy from ${GITHUB_SHA}"
-          git push -f "https://${{ secrets.JEKYLL_PAT }}@github.com/${GITHUB_REPOSITORY}.git" HEAD:gh-pages
+          git push -f origin HEAD
