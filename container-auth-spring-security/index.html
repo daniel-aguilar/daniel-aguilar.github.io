@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1"><!-- Begin Jekyll SEO tag v2.8.0 -->
+<title>Container Authentication with Spring Security | Daniel’s Blog</title>
+<meta name="generator" content="Jekyll v4.4.1" />
+<meta property="og:title" content="Container Authentication with Spring Security" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="Spring Security is a framework full of solid features, most of them working nearly out of the box. Yet it’s still flexible enough to adapt to your particular requirements. In this article I’ll demonstrate how to integrate your Spring application authentication with a servlet container, such as WebSphere Application Server (WAS) or Tomcat, using Spring Security." />
+<meta property="og:description" content="Spring Security is a framework full of solid features, most of them working nearly out of the box. Yet it’s still flexible enough to adapt to your particular requirements. In this article I’ll demonstrate how to integrate your Spring application authentication with a servlet container, such as WebSphere Application Server (WAS) or Tomcat, using Spring Security." />
+<meta property="og:site_name" content="Daniel’s Blog" />
+<meta property="og:type" content="article" />
+<meta property="article:published_time" content="2020-05-30T00:00:00+00:00" />
+<meta name="twitter:card" content="summary" />
+<meta property="twitter:title" content="Container Authentication with Spring Security" />
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BlogPosting","dateModified":"2020-05-30T00:00:00+00:00","datePublished":"2020-05-30T00:00:00+00:00","description":"Spring Security is a framework full of solid features, most of them working nearly out of the box. Yet it’s still flexible enough to adapt to your particular requirements. In this article I’ll demonstrate how to integrate your Spring application authentication with a servlet container, such as WebSphere Application Server (WAS) or Tomcat, using Spring Security.","headline":"Container Authentication with Spring Security","mainEntityOfPage":{"@type":"WebPage","@id":"/container-auth-spring-security/"},"url":"/container-auth-spring-security/"}</script>
+<!-- End Jekyll SEO tag -->
+<link rel="stylesheet" href="/assets/main.css"><link type="application/atom+xml" rel="alternate" href="/feed.xml" title="Daniel&apos;s Blog" /></head>
+<body><header class="site-header" role="banner">
+
+  <div class="wrapper"><a class="site-title" rel="author" href="/">Daniel&#39;s Blog</a><nav class="site-nav">
+        <input type="checkbox" id="nav-trigger" class="nav-trigger" />
+        <label for="nav-trigger">
+          <span class="menu-icon">
+            <svg viewBox="0 0 18 15" width="18px" height="15px">
+              <path d="M18,1.484c0,0.82-0.665,1.484-1.484,1.484H1.484C0.665,2.969,0,2.304,0,1.484l0,0C0,0.665,0.665,0,1.484,0 h15.032C17.335,0,18,0.665,18,1.484L18,1.484z M18,7.516C18,8.335,17.335,9,16.516,9H1.484C0.665,9,0,8.335,0,7.516l0,0 c0-0.82,0.665-1.484,1.484-1.484h15.032C17.335,6.031,18,6.696,18,7.516L18,7.516z M18,13.516C18,14.335,17.335,15,16.516,15H1.484 C0.665,15,0,14.335,0,13.516l0,0c0-0.82,0.665-1.483,1.484-1.483h15.032C17.335,12.031,18,12.695,18,13.516L18,13.516z"/>
+            </svg>
+          </span>
+        </label>
+
+        <div class="trigger"><a class="page-link" href="/about/">About</a></div>
+      </nav></div>
+</header>
+<main class="page-content" aria-label="Content">
+      <div class="wrapper">
+        <article class="post h-entry" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+    <h1 class="post-title p-name" itemprop="name headline">Container Authentication with Spring Security</h1>
+    <p class="post-meta">
+      <time class="dt-published" datetime="2020-05-30T00:00:00+00:00" itemprop="datePublished">May 30, 2020
+      </time></p>
+  </header>
+
+  <div class="post-content e-content" itemprop="articleBody">
+    <p>Spring Security is a framework full of solid features, most of them working
+nearly out of the box. Yet it’s still flexible enough to adapt to your
+particular requirements. In this article I’ll demonstrate how to integrate your
+Spring application authentication with a servlet container, such as WebSphere
+Application Server (WAS) or Tomcat, using Spring Security.</p>
+
+<p>A little bit of background before we get started. I was assigned a new project
+at work (Java web application running in a WAS), with one of the requirements
+being the ability to authenticate existing users in a directory service,
+specifically an LDAP server. While doing my research at the time, I found myself
+either digging through old forum posts, inspecting inherited and unmaintained
+code, or reading a whole spec in search for a particular detail. So I thought
+I’d write an article about it, with completeness being the main goal.</p>
+
+<p>I’ll be working with OpenJDK 8, Spring Boot 2.3.0, Spring Security 5.3.2 and the
+Jetty Maven plugin, which spins up a servlet container ideal for development. A
+working sample of the following code can be found <a href="https://github.com/daniel-aguilar/daniel-aguilar.github.io/tree/master/samples/jee-auth">here</a>.</p>
+
+<h2 id="form-based-authentication">Form Based Authentication</h2>
+
+<p>The first step is setting up the security configuration over at our <em>deployment
+descriptor</em> (i.e. <code class="language-plaintext highlighter-rouge">web.xml</code>). FORM based login just so happens to be our ideal
+authentication mechanism, users are presented with a login page where they enter
+their credentials. Under the hood, the action of the form is <code class="language-plaintext highlighter-rouge">j_security_check</code>,
+where we’ll be POSTing a <code class="language-plaintext highlighter-rouge">j_username</code> and <code class="language-plaintext highlighter-rouge">j_password</code>. The server then returns
+a cookie <code class="language-plaintext highlighter-rouge">JSESSIONID</code> used to validate any other requests that require
+authentication (and <em>authorization</em>, or access on the basis of roles). Here’s
+how it’s done:</p>
+
+<figure class="highlight"><pre><code class="language-xml" data-lang="xml"><span class="c">&lt;!-- web.xml excerpt --&gt;</span>
+<span class="nt">&lt;login-config&gt;</span>
+  <span class="nt">&lt;auth-method&gt;</span>FORM<span class="nt">&lt;/auth-method&gt;</span>
+  <span class="nt">&lt;realm-name&gt;</span>realm<span class="nt">&lt;/realm-name&gt;</span>
+  <span class="nt">&lt;form-login-config&gt;</span>
+    <span class="nt">&lt;form-login-page&gt;</span>/login<span class="nt">&lt;/form-login-page&gt;</span>
+    <span class="nt">&lt;form-error-page&gt;</span>/login?error<span class="nt">&lt;/form-error-page&gt;</span>
+  <span class="nt">&lt;/form-login-config&gt;</span>
+<span class="nt">&lt;/login-config&gt;</span></code></pre></figure>
+
+<p>The <code class="language-plaintext highlighter-rouge">realm-name</code> indicates the <em>LDAP realm name</em>. Users are stored there, and we
+really don’t care about the details. The realm name should be provided by the
+application server administrators.</p>
+
+<p>An additional <code class="language-plaintext highlighter-rouge">form-login-config</code> is required, specifying the login and error
+page URLs, where the user will be automatically redirected when unauthenticated,
+or when the credentials don’t match, respectively.</p>
+
+<p>Over at our login page, we would need an HTML form. The <a href="https://javaee.github.io/servlet-spec/downloads/servlet-3.1/Final/servlet-3_1-final.pdf">servlet spec</a> offers
+an example of how that might look like:</p>
+
+<figure class="highlight"><pre><code class="language-html" data-lang="html"><span class="nt">&lt;form</span> <span class="na">method=</span><span class="s">"POST"</span> <span class="na">action=</span><span class="s">"j_security_check"</span><span class="nt">&gt;</span>
+  <span class="nt">&lt;input</span> <span class="na">type=</span><span class="s">"text"</span> <span class="na">name=</span><span class="s">"j_username"</span><span class="nt">&gt;</span>
+  <span class="nt">&lt;input</span> <span class="na">type=</span><span class="s">"password"</span> <span class="na">name=</span><span class="s">"j_password"</span> <span class="na">autocomplete=</span><span class="s">"off"</span><span class="nt">&gt;</span>
+<span class="nt">&lt;/form&gt;</span></code></pre></figure>
+
+<h3 id="defining-the-roles">Defining the Roles</h3>
+
+<p>One last piece of configuration we can specify in the deployment descriptor is
+the <code class="language-plaintext highlighter-rouge">security-role</code> element. We use it to define—well—security roles (with
+an optional description for each one):</p>
+
+<figure class="highlight"><pre><code class="language-xml" data-lang="xml"><span class="c">&lt;!-- web.xml excerpt --&gt;</span>
+<span class="nt">&lt;security-role&gt;</span>
+  <span class="nt">&lt;description&gt;</span>Application Administrator<span class="nt">&lt;/description&gt;</span>
+  <span class="nt">&lt;role-name&gt;</span>ROLE_ADMIN<span class="nt">&lt;/role-name&gt;</span>
+<span class="nt">&lt;/security-role&gt;</span></code></pre></figure>
+
+<p>Do notice I added the <code class="language-plaintext highlighter-rouge">ROLE_</code> prefix to the role name. If you’ve ever worked
+with Spring Security before, you know that’s a naming convention.</p>
+
+<h2 id="spring-security-configuration">Spring Security Configuration</h2>
+
+<p>That’s it for the <code class="language-plaintext highlighter-rouge">web.xml</code>, Spring Security takes care of the rest. For this
+step I prefer the Java configuration over XML. It consists of overriding the
+<code class="language-plaintext highlighter-rouge">configure</code> method:</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="kd">protected</span> <span class="kt">void</span> <span class="nf">configure</span><span class="o">(</span><span class="nc">HttpSecurity</span> <span class="n">http</span><span class="o">)</span> <span class="kd">throws</span> <span class="nc">Exception</span> <span class="o">{</span>
+    <span class="n">http</span><span class="o">.</span><span class="na">authorizeRequests</span><span class="o">(</span><span class="n">requests</span> <span class="o">-&gt;</span> <span class="n">requests</span>
+        <span class="o">.</span><span class="na">antMatchers</span><span class="o">(</span><span class="s">"/admin/**"</span><span class="o">).</span><span class="na">hasRole</span><span class="o">(</span><span class="s">"ADMIN"</span><span class="o">)</span>
+        <span class="o">.</span><span class="na">anyRequest</span><span class="o">().</span><span class="na">permitAll</span><span class="o">()</span>
+    <span class="o">);</span>
+    <span class="n">http</span><span class="o">.</span><span class="na">jee</span><span class="o">(</span><span class="n">jee</span> <span class="o">-&gt;</span> <span class="n">jee</span><span class="o">.</span><span class="na">mappableAuthorities</span><span class="o">(</span><span class="s">"ROLE_ADMIN"</span><span class="o">));</span>
+<span class="o">}</span></code></pre></figure>
+
+<p>Here I’m securing the <code class="language-plaintext highlighter-rouge">/admin/**</code> route so only the <code class="language-plaintext highlighter-rouge">ADMIN</code> role can access it
+(the <code class="language-plaintext highlighter-rouge">ROLE_</code> prefix is added automatically), while the rest is allowed to
+anyone. immediately after that is where we tell Spring Security to integrate
+with the Java EE container authentication (the <a href="https://docs.spring.io/spring-security/site/docs/5.3.2.RELEASE/reference/html5/#servlet-preauth">docs</a> refer to this scenario
+as <em>pre-authentication</em>), importing the previously defined roles via the
+<code class="language-plaintext highlighter-rouge">mappableAuthorities</code> method.</p>
+
+<p>Spring Security is highly customizable, the documentation has all the classes
+that can be extended to modify the default behaviour, such as loading certain
+user information from a database (email address, full name, etc.) using a custom
+<code class="language-plaintext highlighter-rouge">UserDetailsService</code>.</p>
+
+<h2 id="the-results">The Results</h2>
+
+<p>Let’s do a couple of test requests to verify our authentication system is
+working.  Jetty allows to configure a security realm in a properties file, which
+is handy for local development, you can learn more <a href="https://wiki.eclipse.org/Jetty/Tutorial/Realms">here</a>. I have the
+following controller methods:</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="nd">@GetMapping</span><span class="o">(</span><span class="s">"/hello"</span><span class="o">)</span>
+<span class="kd">public</span> <span class="nc">String</span> <span class="nf">hello</span><span class="o">()</span> <span class="o">{</span>
+    <span class="k">return</span> <span class="s">"Hello"</span><span class="o">;</span>
+<span class="o">}</span>
+
+<span class="nd">@GetMapping</span><span class="o">(</span><span class="s">"/admin/hello"</span><span class="o">)</span>
+<span class="kd">public</span> <span class="nc">String</span> <span class="nf">helloAdmin</span><span class="o">()</span> <span class="o">{</span>
+    <span class="k">return</span> <span class="s">"Hello, Admin"</span><span class="o">;</span>
+<span class="o">}</span></code></pre></figure>
+
+<figure class="highlight"><pre><code class="language-bash" data-lang="bash"><span class="nv">$ </span>curl localhost:8080/app/hello/
+Hello
+
+<span class="nv">$ </span>curl localhost:8080/app/admin/hello/ | python <span class="nt">-m</span> json.tool
+<span class="o">{</span>
+    <span class="s2">"timestamp"</span>: <span class="s2">"2020-05-30T06:33:41.250+00:00"</span>,
+    <span class="s2">"status"</span>: 403,
+    <span class="s2">"error"</span>: <span class="s2">"Forbidden"</span>,
+    <span class="s2">"message"</span>: <span class="s2">""</span>,
+    <span class="s2">"path"</span>: <span class="s2">"/app/admin/hello"</span>
+<span class="o">}</span>
+
+<span class="nv">$ </span>curl <span class="nt">-c</span> - <span class="nt">-d</span> <span class="s2">"j_username=admin&amp;j_password=pass"</span> <span class="se">\</span>
+localhost:8080/app/j_security_check/
+<span class="c"># Output shortened for brevity</span>
+JSESSIONID node0gl4hg0zrigmg3v4ywapwo959.node0
+
+<span class="nv">$ </span>curl <span class="nt">-b</span> <span class="s2">"JSESSIONID=node0gl4hg0zrigmg3v4ywapwo959.node0"</span> <span class="se">\</span>
+localhost:8080/app/admin/hello/
+Hello, Admin
+<span class="c"># Subsequent requests may 403'd as the cookie value has changed</span></code></pre></figure>
+
+<p>Spring Security has its own JSON-formatted error messages, which are convenient
+if you’re working with JavaScript.</p>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>You can see just how little configuration Spring Security actually requires, but
+how much functionality you’re getting back! Plus, container authentication
+delegates the security to the application server, making it relatively easier to
+implement.</p>
+
+
+  </div><a class="u-url" href="/container-auth-spring-security/" hidden></a>
+</article>
+
+      </div>
+    </main><footer class="site-footer h-card">
+  <data class="u-url" href="/"></data>
+
+  <div class="wrapper">
+
+    <h2 class="footer-heading">Daniel&#39;s Blog</h2>
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <p>There will be code</p>
+      </div>
+
+      <div class="footer-col footer-col-2"><ul class="social-media-list"><li><a href="https://github.com/daniel-aguilar"><svg class="svg-icon"><use xlink:href="/assets/minima-social-icons.svg#github"></use></svg> <span class="username">daniel-aguilar</span></a></li><li><a href="https://www.linkedin.com/in/dan-aguilar"><svg class="svg-icon"><use xlink:href="/assets/minima-social-icons.svg#linkedin"></use></svg> <span class="username">dan-aguilar</span></a></li><li><a href="/feed.xml"><svg class="svg-icon"><use xlink:href="/assets/minima-social-icons.svg#rss"></use></svg> <span>RSS</span></a></li></ul>
+</div>
+
+      <div class="footer-col footer-col-3">
+        <p>
+          This work is licensed under <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a><img src="https://mirrors.creativecommons.org/presskit/icons/cc.svg" alt="" style="max-width: 1em;max-height:1em;margin-left: .2em;"><img src="https://mirrors.creativecommons.org/presskit/icons/by.svg" alt="" style="max-width: 1em;max-height:1em;margin-left: .2em;">
+        </p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+</body>
+
+</html>

@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1"><!-- Begin Jekyll SEO tag v2.8.0 -->
+<title>Going back in time with Oracle Flashback | Daniel’s Blog</title>
+<meta name="generator" content="Jekyll v4.4.1" />
+<meta property="og:title" content="Going back in time with Oracle Flashback" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="You ever wished you could take a snapshot of your current Oracle development database? One that you could easily go back to in case of trouble. What if you started working on a feature, and accidentally mess up the business logic integrity in some way? Imagine the countless hours just trying to revert the damage done only to finally give up and end up recreating the database from scratch. You ever wished this could be done in a straightforward way (less than 3 commands)? Me too!" />
+<meta property="og:description" content="You ever wished you could take a snapshot of your current Oracle development database? One that you could easily go back to in case of trouble. What if you started working on a feature, and accidentally mess up the business logic integrity in some way? Imagine the countless hours just trying to revert the damage done only to finally give up and end up recreating the database from scratch. You ever wished this could be done in a straightforward way (less than 3 commands)? Me too!" />
+<meta property="og:site_name" content="Daniel’s Blog" />
+<meta property="og:type" content="article" />
+<meta property="article:published_time" content="2021-12-20T00:00:00+00:00" />
+<meta name="twitter:card" content="summary" />
+<meta property="twitter:title" content="Going back in time with Oracle Flashback" />
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BlogPosting","dateModified":"2021-12-20T00:00:00+00:00","datePublished":"2021-12-20T00:00:00+00:00","description":"You ever wished you could take a snapshot of your current Oracle development database? One that you could easily go back to in case of trouble. What if you started working on a feature, and accidentally mess up the business logic integrity in some way? Imagine the countless hours just trying to revert the damage done only to finally give up and end up recreating the database from scratch. You ever wished this could be done in a straightforward way (less than 3 commands)? Me too!","headline":"Going back in time with Oracle Flashback","mainEntityOfPage":{"@type":"WebPage","@id":"/oracle-flashback/"},"url":"/oracle-flashback/"}</script>
+<!-- End Jekyll SEO tag -->
+<link rel="stylesheet" href="/assets/main.css"><link type="application/atom+xml" rel="alternate" href="/feed.xml" title="Daniel&apos;s Blog" /></head>
+<body><header class="site-header" role="banner">
+
+  <div class="wrapper"><a class="site-title" rel="author" href="/">Daniel&#39;s Blog</a><nav class="site-nav">
+        <input type="checkbox" id="nav-trigger" class="nav-trigger" />
+        <label for="nav-trigger">
+          <span class="menu-icon">
+            <svg viewBox="0 0 18 15" width="18px" height="15px">
+              <path d="M18,1.484c0,0.82-0.665,1.484-1.484,1.484H1.484C0.665,2.969,0,2.304,0,1.484l0,0C0,0.665,0.665,0,1.484,0 h15.032C17.335,0,18,0.665,18,1.484L18,1.484z M18,7.516C18,8.335,17.335,9,16.516,9H1.484C0.665,9,0,8.335,0,7.516l0,0 c0-0.82,0.665-1.484,1.484-1.484h15.032C17.335,6.031,18,6.696,18,7.516L18,7.516z M18,13.516C18,14.335,17.335,15,16.516,15H1.484 C0.665,15,0,14.335,0,13.516l0,0c0-0.82,0.665-1.483,1.484-1.483h15.032C17.335,12.031,18,12.695,18,13.516L18,13.516z"/>
+            </svg>
+          </span>
+        </label>
+
+        <div class="trigger"><a class="page-link" href="/about/">About</a></div>
+      </nav></div>
+</header>
+<main class="page-content" aria-label="Content">
+      <div class="wrapper">
+        <article class="post h-entry" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+    <h1 class="post-title p-name" itemprop="name headline">Going back in time with Oracle Flashback</h1>
+    <p class="post-meta">
+      <time class="dt-published" datetime="2021-12-20T00:00:00+00:00" itemprop="datePublished">Dec 20, 2021
+      </time></p>
+  </header>
+
+  <div class="post-content e-content" itemprop="articleBody">
+    <p>You ever wished you could take a snapshot of your current Oracle
+development database? One that you could easily go back to in case of
+trouble. What if you started working on a feature, and accidentally
+mess up the business logic integrity in some way? Imagine the
+countless hours just trying to revert the damage done only to finally
+give up and end up recreating the database from scratch. You ever
+wished this could be done in a straightforward way (less than 3
+commands)? Me too!</p>
+
+<p>Advancements in container technology have made it unbelievably easy to
+spin up a development database in mere seconds. Gone are the days of
+pre-packaged, resource-hogging, inflexible virtual machines; or
+installing databases locally for a particular project, setting the
+correct schema permissions, and dealing with platform-specific issues,
+as you spend the rest of your much productive day praying the hard
+drive never dies out; or —worse— having no alternative other than
+to share a single database with your entire development team.</p>
+
+<p>We now have access to hundreds of official, actively maintained Docker
+images of our favorite databases, from Postgres to SQL Server. They’re
+all lighting fast and fully extensible, featuring sensible defaults
+(e.g. correct file system structure, proper user/group permissions),
+mappable ports, persistent volumes, among other great capabilities.</p>
+
+<p>Containers help speed up the development process by providing
+consistent, predictable &amp; easily reproducible environments to work
+with. It’s in this same spirit that today I bring you yet another tool
+you can add to your belt: Oracle’s <a href="https://docs.oracle.com/en/database/oracle/oracle-database/19/rcmrf/FLASHBACK-DATABASE.html">Flashback Database</a>.</p>
+
+<h1 id="what-is-flashback-database">What is Flashback Database?</h1>
+
+<p>Flashback Database is a neat feature of Oracle Database that lets you
+rewind your database to a defined point in time. Think of it as a
+<code class="language-plaintext highlighter-rouge">ROLLBACK</code> statement, but without the need of a transaction, and
+working at a much deeper level, as it deals with data files. What this
+means is that any new rows added to any table (or any new table
+added), sequences incremented, or modified stored procedures can be
+sent back in time to a pristine state. It’s flippin’ cool.</p>
+
+<h1 id="what-are-the-use-cases">What are the use cases?</h1>
+
+<p>You may think this is a feature a DBA would me most concerned with,
+but think again!</p>
+
+<p>I use flashbacks to rollback undesired changes on my local database,
+introduced by new features I’m working on. This is specially useful
+when working with a relatively complex (100+ objects) database.</p>
+
+<p>Perhaps I accidentally corrupted a specific row with invalid (i.e. not
+according to the business logic) data; or I suddenly have to switch
+branches and don’t wanna be left with a bunch of test data, or
+modified column datatypes that I can’t ORM’d my classes to; or maybe
+there’s a painfully elaborate domain logic process I have to perform
+within the application multiple times to get the correct data to work
+with.</p>
+
+<p>It’s a game of do and re-do. I can safely and confidently move my way
+around the database with a big <em>undo</em> button in my hand ready to be
+pressed at any time I need. This sort of flexibility, I believe,
+speeds up the development cycle considerably.</p>
+
+<h1 id="getting-started">Getting Started</h1>
+
+<p>As it is the case with most of my articles, this is a tutorial with a
+hands-on approach. If you have <a href="https://www.docker.com/">Docker</a> installed, you may follow
+along with me. I’ll be demonstrating how flashback database works
+using this <a href="https://github.com/daniel-aguilar/daniel-aguilar.github.io/tree/master/samples/oracle-flashback">sample project</a>, which has all of the configuration and
+scripts you will need.</p>
+
+<p>I’ll be working with release 19c, but this tutorial also applies to
+version 12c. There’s a caveat tho: <strong>flashback database is only
+available on Oracle Database Enterprise Edition</strong>.</p>
+
+<p>Oracle provides official Dockerfiles that facilitate the installation
+and configuration of an Oracle Database. Head over to their <a href="https://github.com/oracle/docker-images">GitHub
+repository</a>, and follow the instructions to build a local oracle
+database image (SingleInstance).</p>
+
+<h1 id="running-the-sample-project">Running the Sample Project</h1>
+
+<p>Once you have an Oracle Database image ready (in this case named
+<code class="language-plaintext highlighter-rouge">oracle/database:19.3.0-ee</code>), you can execute the <code class="language-plaintext highlighter-rouge">init.sh</code>
+script. This starts an Oracle Database container, automatically
+configures flashback database (which is not enabled by default),
+creates a pluggable database with a test user and a couple of tables,
+then finally creates a restore point. Here’s what we’ll be working
+with:</p>
+
+<p><img src="https://i.imgur.com/yFSmmlw.png" alt="Database Design" /></p>
+
+<p>You can connect to the database using the user <code class="language-plaintext highlighter-rouge">scott</code>, password
+<code class="language-plaintext highlighter-rouge">tiger</code>. The hostname would be the IP address that has been assigned
+to your container, which you can find out what it is via <code class="language-plaintext highlighter-rouge">docker
+inspect oracle-db</code>. The port and service name correspond to 1521 and
+<code class="language-plaintext highlighter-rouge">LOCALPDB</code> respectively.</p>
+
+<figure class="highlight"><pre><code class="language-bash" data-lang="bash"><span class="nv">$ </span>docker inspect oracle-db | <span class="nb">grep </span>IPAddress
+            <span class="s2">"SecondaryIPAddresses"</span>: null,
+            <span class="s2">"IPAddress"</span>: <span class="s2">"172.17.0.2"</span>,
+                    <span class="s2">"IPAddress"</span>: <span class="s2">"172.17.0.2"</span>,</code></pre></figure>
+
+<h1 id="making-changes">Making Changes</h1>
+
+<p>You can query existing restore points with the following statement:
+<code class="language-plaintext highlighter-rouge">SELECT * FROM V$RESTORE_POINT;</code>. If you run the previous command,
+you’ll find out the <code class="language-plaintext highlighter-rouge">BEFORE_FEATURE</code> restore point exists, which means
+we can safely start doing some changes. The <code class="language-plaintext highlighter-rouge">feature.sql</code> script
+includes the following:</p>
+
+<figure class="highlight"><pre><code class="language-sql" data-lang="sql"><span class="k">INSERT</span> <span class="k">INTO</span> <span class="n">guitar</span> <span class="p">(</span><span class="n">brand_id</span><span class="p">,</span> <span class="n">model</span><span class="p">)</span> <span class="k">VALUES</span> <span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="s1">'Les Paul'</span><span class="p">);</span>
+<span class="k">CREATE</span> <span class="k">TABLE</span> <span class="n">guitar_catalog</span> <span class="p">(</span>
+    <span class="n">id</span> <span class="n">NUMBER</span> <span class="k">GENERATED</span> <span class="k">AS</span> <span class="k">IDENTITY</span><span class="p">,</span>
+    <span class="n">guitar_id</span> <span class="n">NUMBER</span><span class="p">,</span>
+    <span class="n">quantity</span> <span class="n">NUMBER</span><span class="p">,</span>
+    <span class="k">CONSTRAINT</span> <span class="n">guitar_catalog_fk</span>
+        <span class="k">FOREIGN</span> <span class="k">KEY</span> <span class="p">(</span><span class="n">guitar_id</span><span class="p">)</span> <span class="k">REFERENCES</span> <span class="n">guitar</span> <span class="p">(</span><span class="n">id</span><span class="p">)</span>
+<span class="p">);</span></code></pre></figure>
+
+<p>We may now drop tables, insert hundreds of new rows, create sequences,
+you get the idea. Naturally, there’s so much data Oracle can hold
+about the new state of the database (10GB in this case, but it can be
+configured), so I wouldn’t recommend abusing this feature too
+much. Remember, this is a development database after all.</p>
+
+<h1 id="performing-the-flashback">Performing the Flashback</h1>
+
+<p>To perform a flashback, we can connect directly to our database via
+RMAN (Recovery Manager), using OS authentication. Start by executing a
+shell in the running container:</p>
+
+<figure class="highlight"><pre><code class="language-bash" data-lang="bash"><span class="nv">$ </span>docker <span class="nb">exec</span> <span class="nt">-it</span> oracle-db bash
+<span class="nv">$ </span><span class="nb">export </span><span class="nv">ORACLE_SID</span><span class="o">=</span>ORCLCDB
+<span class="nv">$ </span><span class="nb">export </span><span class="nv">ORACLE_HOME</span><span class="o">=</span>/opt/oracle/product/19c/dbhome_1
+<span class="nv">$ </span>rman target /</code></pre></figure>
+
+<p>At this point, it’s only a matter of closing the pluggable database
+(PDB), perform the actual flashback, and finally reopening the PDB
+(with the <code class="language-plaintext highlighter-rouge">RESETLOGS</code> option):</p>
+
+<figure class="highlight"><pre><code class="language-sql" data-lang="sql"><span class="k">ALTER</span> <span class="n">PLUGGABLE</span> <span class="k">DATABASE</span> <span class="n">LOCALPDB</span> <span class="k">CLOSE</span> <span class="k">IMMEDIATE</span><span class="p">;</span>
+<span class="n">FLASHBACK</span> <span class="n">PLUGGABLE</span> <span class="k">DATABASE</span> <span class="n">LOCALPDB</span> <span class="k">TO</span> <span class="n">RESTORE</span> <span class="n">POINT</span> <span class="n">BEFORE_FEATURE</span><span class="p">;</span>
+<span class="k">ALTER</span> <span class="n">PLUGGABLE</span> <span class="k">DATABASE</span> <span class="n">LOCALPDB</span> <span class="k">OPEN</span> <span class="n">RESETLOGS</span><span class="p">;</span></code></pre></figure>
+
+<p>And that’s it! The flashback is now complete, and you can login with
+<code class="language-plaintext highlighter-rouge">scott</code> again to check the current state of the database. Everything
+should be how we initially started.</p>
+
+<h1 id="conclusion">Conclusion</h1>
+
+<p>This isn’t by any means a guide to database flashbacks at all, far
+from it. This is a demonstration of a useful feature you can apply to
+your daily software development work. I obviously had to skim over so
+many details, (such as undoing a flashback using <code class="language-plaintext highlighter-rouge">RECOVER</code>), but
+hopefully you could get a general idea of what this is all about!</p>
+
+<p>If you’d like to learn more, you can visit the <a href="https://docs.oracle.com/en/database/oracle/oracle-database/19/rcmrf/FLASHBACK-DATABASE.html">official
+reference</a>, which has a more in-depth explanation of what is going
+on, plus some other great examples.</p>
+
+
+  </div><a class="u-url" href="/oracle-flashback/" hidden></a>
+</article>
+
+      </div>
+    </main><footer class="site-footer h-card">
+  <data class="u-url" href="/"></data>
+
+  <div class="wrapper">
+
+    <h2 class="footer-heading">Daniel&#39;s Blog</h2>
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <p>There will be code</p>
+      </div>
+
+      <div class="footer-col footer-col-2"><ul class="social-media-list"><li><a href="https://github.com/daniel-aguilar"><svg class="svg-icon"><use xlink:href="/assets/minima-social-icons.svg#github"></use></svg> <span class="username">daniel-aguilar</span></a></li><li><a href="https://www.linkedin.com/in/dan-aguilar"><svg class="svg-icon"><use xlink:href="/assets/minima-social-icons.svg#linkedin"></use></svg> <span class="username">dan-aguilar</span></a></li><li><a href="/feed.xml"><svg class="svg-icon"><use xlink:href="/assets/minima-social-icons.svg#rss"></use></svg> <span>RSS</span></a></li></ul>
+</div>
+
+      <div class="footer-col footer-col-3">
+        <p>
+          This work is licensed under <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a><img src="https://mirrors.creativecommons.org/presskit/icons/cc.svg" alt="" style="max-width: 1em;max-height:1em;margin-left: .2em;"><img src="https://mirrors.creativecommons.org/presskit/icons/by.svg" alt="" style="max-width: 1em;max-height:1em;margin-left: .2em;">
+        </p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+</body>
+
+</html>

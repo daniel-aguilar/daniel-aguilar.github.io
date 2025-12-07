@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1"><!-- Begin Jekyll SEO tag v2.8.0 -->
+<title>Dockerfile: CMD vs. ENTRYPOINT | Daniel’s Blog</title>
+<meta name="generator" content="Jekyll v4.4.1" />
+<meta property="og:title" content="Dockerfile: CMD vs. ENTRYPOINT" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="Docker provides a couple of instructions to specify what a container does when you want to docker run it: CMD and ENTRYPOINT." />
+<meta property="og:description" content="Docker provides a couple of instructions to specify what a container does when you want to docker run it: CMD and ENTRYPOINT." />
+<meta property="og:site_name" content="Daniel’s Blog" />
+<meta property="og:type" content="article" />
+<meta property="article:published_time" content="2017-08-22T00:00:00+00:00" />
+<meta name="twitter:card" content="summary" />
+<meta property="twitter:title" content="Dockerfile: CMD vs. ENTRYPOINT" />
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BlogPosting","dateModified":"2017-08-22T00:00:00+00:00","datePublished":"2017-08-22T00:00:00+00:00","description":"Docker provides a couple of instructions to specify what a container does when you want to docker run it: CMD and ENTRYPOINT.","headline":"Dockerfile: CMD vs. ENTRYPOINT","mainEntityOfPage":{"@type":"WebPage","@id":"/docker-cmd-vs-entrypoint/"},"url":"/docker-cmd-vs-entrypoint/"}</script>
+<!-- End Jekyll SEO tag -->
+<link rel="stylesheet" href="/assets/main.css"><link type="application/atom+xml" rel="alternate" href="/feed.xml" title="Daniel&apos;s Blog" /></head>
+<body><header class="site-header" role="banner">
+
+  <div class="wrapper"><a class="site-title" rel="author" href="/">Daniel&#39;s Blog</a><nav class="site-nav">
+        <input type="checkbox" id="nav-trigger" class="nav-trigger" />
+        <label for="nav-trigger">
+          <span class="menu-icon">
+            <svg viewBox="0 0 18 15" width="18px" height="15px">
+              <path d="M18,1.484c0,0.82-0.665,1.484-1.484,1.484H1.484C0.665,2.969,0,2.304,0,1.484l0,0C0,0.665,0.665,0,1.484,0 h15.032C17.335,0,18,0.665,18,1.484L18,1.484z M18,7.516C18,8.335,17.335,9,16.516,9H1.484C0.665,9,0,8.335,0,7.516l0,0 c0-0.82,0.665-1.484,1.484-1.484h15.032C17.335,6.031,18,6.696,18,7.516L18,7.516z M18,13.516C18,14.335,17.335,15,16.516,15H1.484 C0.665,15,0,14.335,0,13.516l0,0c0-0.82,0.665-1.483,1.484-1.483h15.032C17.335,12.031,18,12.695,18,13.516L18,13.516z"/>
+            </svg>
+          </span>
+        </label>
+
+        <div class="trigger"><a class="page-link" href="/about/">About</a></div>
+      </nav></div>
+</header>
+<main class="page-content" aria-label="Content">
+      <div class="wrapper">
+        <article class="post h-entry" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+    <h1 class="post-title p-name" itemprop="name headline">Dockerfile: CMD vs. ENTRYPOINT</h1>
+    <p class="post-meta">
+      <time class="dt-published" datetime="2017-08-22T00:00:00+00:00" itemprop="datePublished">Aug 22, 2017
+      </time></p>
+  </header>
+
+  <div class="post-content e-content" itemprop="articleBody">
+    <p>Docker provides a couple of instructions to specify what a container
+does when you want to <code class="language-plaintext highlighter-rouge">docker run</code> it: <code class="language-plaintext highlighter-rouge">CMD</code> and <code class="language-plaintext highlighter-rouge">ENTRYPOINT</code>.</p>
+
+<p>These two provide a somewhat similar functionality but are actually
+quite different fundamentally. According to the <a href="https://docs.docker.com/engine/reference/builder/">Dockerfile
+reference</a>, <code class="language-plaintext highlighter-rouge">CMD</code>’s entire purpose is to provide <strong>defaults</strong> for an
+executing container, while <code class="language-plaintext highlighter-rouge">ENTRYPOINT</code>’s is being concerned with the
+<strong>configuration</strong> of said executing container.</p>
+
+<p>That’s their main purpose. However, depending on the combination of this
+two instructions, we can achieve different use cases.</p>
+
+<h2 id="cmd">CMD</h2>
+
+<p>Let’s take a look at <a href="https://github.com/debuerreotype/docker-debian-artifacts/blob/42bec5bc2f5a76ceeb125bc4e66d6f70a95e933f/stretch/slim/Dockerfile">Debian Stretch Slim’s Dockerfile</a>:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>FROM scratch
+ADD rootfs.tar.xz /
+CMD ["bash"]
+</code></pre></div></div>
+
+<p>Notice how there’s no <code class="language-plaintext highlighter-rouge">ENTRYPOINT</code>. When only <code class="language-plaintext highlighter-rouge">CMD</code> is present, the
+default behaviour will be to execute whatever is specified by <code class="language-plaintext highlighter-rouge">CMD</code>,
+bash in this case.</p>
+
+<p>So, when I <code class="language-plaintext highlighter-rouge">docker run debian:stretch-slim</code>, the container will run bash
+and exit.</p>
+
+<p>Wouldn’t <code class="language-plaintext highlighter-rouge">ENTRYPOINT</code> achieve the same thing? Why do we need <code class="language-plaintext highlighter-rouge">CMD</code> for
+then? Well, <code class="language-plaintext highlighter-rouge">CMD</code> has a special property, something I like to call <em>soft
+exec</em>, which is basically the ability to override the command. Take
+a look:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$ docker run debian:stretch-slim echo Hello!
+Hello!
+</code></pre></div></div>
+
+<p>The container executed <code class="language-plaintext highlighter-rouge">echo Hello!</code> instead of the default command.</p>
+
+<h2 id="entrypoint">ENTRYPOINT</h2>
+
+<p>Let’s contrast the previous behaviour with an <code class="language-plaintext highlighter-rouge">ENTRYPOINT</code> instruction.
+Using the following Dockerfile:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>FROM debian:stretch-slim
+ENTRYPOINT ["echo" "Hello,"]
+</code></pre></div></div>
+
+<p>I’m gonna build a <code class="language-plaintext highlighter-rouge">entrypoint-test</code> image and run it:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$ docker run entrypoint-test
+Hello,
+</code></pre></div></div>
+
+<p>Okay, so far things look samey. But watch this!</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$ docker run entrypoint-test World!
+Hello, World!
+</code></pre></div></div>
+
+<p>I couldn’t override the command this time! Instead, the container used
+it as <code class="language-plaintext highlighter-rouge">echo</code>’s input. This is what I call the <em>hard exec</em>: <code class="language-plaintext highlighter-rouge">ENTRYPOINT</code>
+will always be executed, regardless.</p>
+
+<h2 id="entrypoint--cmd">ENTRYPOINT + CMD</h2>
+
+<p>As I mentioned, <code class="language-plaintext highlighter-rouge">CMD</code> provides default arguments to <code class="language-plaintext highlighter-rouge">ENTRYPOINT</code>.
+Consider the following Dockerfile:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>FROM debian:stretch-slim
+CMD ["World!"]
+ENTRYPOINT ["echo", "Hello,"]
+</code></pre></div></div>
+
+<p>Having built it as <code class="language-plaintext highlighter-rouge">entrypoint-cmd-test</code>, let’s run it:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$ docker run entrypoint-cmd-test
+Hello, World!
+</code></pre></div></div>
+
+<p><code class="language-plaintext highlighter-rouge">CMD</code> provided the default <em>World!</em> argument to echo. What if we pass an
+argument of our own?</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$ docker run entrypoint-cmd-test Daniel!
+Hello, Daniel!
+</code></pre></div></div>
+
+<p>We have successfully overridden the default parameters!</p>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>Both <code class="language-plaintext highlighter-rouge">CMD</code> &amp; <code class="language-plaintext highlighter-rouge">ENTRYPOINT</code> bring their own stuff to the table, but at the
+end of the day, like most things, it’s up to you to decide which use
+case fits your needs! I hope this has helped clear up the confusion!</p>
+
+
+  </div><a class="u-url" href="/docker-cmd-vs-entrypoint/" hidden></a>
+</article>
+
+      </div>
+    </main><footer class="site-footer h-card">
+  <data class="u-url" href="/"></data>
+
+  <div class="wrapper">
+
+    <h2 class="footer-heading">Daniel&#39;s Blog</h2>
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <p>There will be code</p>
+      </div>
+
+      <div class="footer-col footer-col-2"><ul class="social-media-list"><li><a href="https://github.com/daniel-aguilar"><svg class="svg-icon"><use xlink:href="/assets/minima-social-icons.svg#github"></use></svg> <span class="username">daniel-aguilar</span></a></li><li><a href="https://www.linkedin.com/in/dan-aguilar"><svg class="svg-icon"><use xlink:href="/assets/minima-social-icons.svg#linkedin"></use></svg> <span class="username">dan-aguilar</span></a></li><li><a href="/feed.xml"><svg class="svg-icon"><use xlink:href="/assets/minima-social-icons.svg#rss"></use></svg> <span>RSS</span></a></li></ul>
+</div>
+
+      <div class="footer-col footer-col-3">
+        <p>
+          This work is licensed under <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a><img src="https://mirrors.creativecommons.org/presskit/icons/cc.svg" alt="" style="max-width: 1em;max-height:1em;margin-left: .2em;"><img src="https://mirrors.creativecommons.org/presskit/icons/by.svg" alt="" style="max-width: 1em;max-height:1em;margin-left: .2em;">
+        </p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+</body>
+
+</html>
