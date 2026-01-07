@@ -1,0 +1,1239 @@
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" ><generator uri="https://jekyllrb.com/" version="4.4.1">Jekyll</generator><link href="/feed.xml" rel="self" type="application/atom+xml" /><link href="/" rel="alternate" type="text/html" /><updated>2026-01-07T19:59:07+00:00</updated><id>/feed.xml</id><title type="html">Daniel’s Blog</title><subtitle>There will be code</subtitle><entry><title type="html">JPQL Considered Harmful</title><link href="/jpql-harmful/" rel="alternate" type="text/html" title="JPQL Considered Harmful" /><published>2024-07-15T00:00:00+00:00</published><updated>2024-07-15T00:00:00+00:00</updated><id>/jpql-harmful</id><content type="html" xml:base="/jpql-harmful/"><![CDATA[<p>In a Java project, it’s not unusual to find database queries using the
+Jakarta Persistence Query Language (JPQL), a fairly easy to use
+language with a syntax akin to SQL. While this is a perfectly
+acceptable way to declare small queries, it can quickly spiral out of
+control for more advanced requirements. The Criteria API (and its
+Spring Data derivative Specifications) allow for a modular,
+programmatic, and type safe declaration of queries. It’s so good,
+you’ll probably never want to go back to writing string queries again!</p>
+
+<p>The data access layer is such an ubiquitous component of our
+applications, one could dare to say it’s the essence of it—business
+logic is derived from this data after all. As a programmer you’ll
+spend a great deal of time in this layer, which means you’ve probably
+run into the following piece of code:</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="c1">// Long and unformatted query...</span>
+<span class="nc">String</span> <span class="n">jpql</span> <span class="o">=</span> <span class="s">"FROM Store s JOIN s.guitars g WHERE g.price &gt; "</span> <span class="o">+</span>
+        <span class="s">"(SELECT max(g2.price) FROM Guitar g2 JOIN g2.store s2 WHERE s2 = :folsomStore) "</span><span class="o">;</span>
+<span class="k">if</span> <span class="o">(</span><span class="n">someCondition</span><span class="o">)</span> <span class="o">{</span>
+    <span class="c1">// ...split across different conditions</span>
+    <span class="n">jpql</span> <span class="o">+=</span> <span class="s">"AND g.fretboardWood NOT IN (:maple, :ebony) "</span><span class="o">;</span>
+<span class="o">}</span>
+<span class="n">jpql</span> <span class="o">+=</span> <span class="s">"ORDER BY s.location ASC"</span><span class="o">;</span>
+
+<span class="nc">Query</span> <span class="n">query</span> <span class="o">=</span> <span class="n">entityManager</span><span class="o">.</span><span class="na">createQuery</span><span class="o">(</span><span class="n">jpql</span><span class="o">);</span>
+<span class="c1">// ... set query parameters</span>
+<span class="k">return</span> <span class="n">query</span><span class="o">.</span><span class="na">getResultList</span><span class="o">();</span> <span class="c1">// No type safety</span></code></pre></figure>
+
+<p>In such a small example you can already spot a few code smells, not to
+mention that string mangling can become extremely gruesome in most
+cases. Given the amount of time we spent maintaining modules with this
+particular pattern found in every method, surely there must be a
+better way to build complex queries without developer experience
+trade-offs.</p>
+
+<h2 id="criteria-api">Criteria API</h2>
+
+<p><a href="https://javaee.github.io/tutorial/persistence-criteria.html">Criteria API</a> was introduced with the release of <a href="https://download.oracle.com/otn-pub/jcp/persistence-2.0-fr-eval-oth-JSpec/persistence-2_0-final-spec.pdf">JSR 317: Java
+Persistence API, Version 2.0</a> in 2009. Criteria queries are written
+in plain Java, are type safe, and just like its JPQL (formerly Java
+Persistence Query Language) counterpart, they work regardless of the
+underlying data store.</p>
+
+<p>Switching your plain string queries to Criteria API is, in my opinion,
+the single most significant improvement you can make to your
+application’s data layer:</p>
+
+<ul>
+  <li>Drastically enhance the developer experience by unlocking powerful
+programmatic control flow techniques, without sacrificing
+readability. Say goodbye to complicated string mangled spaghetti
+code.</li>
+  <li>Reduce potentially hundreds of lines of duplicate queries with
+little to no differences by encouraging modularity and reuse. Client
+requests a change be reflected in multiple reports? Modifying a
+single query is often enough.</li>
+  <li>Improve performance by skipping unnecessary <code class="language-plaintext highlighter-rouge">JOIN</code> clauses you might
+have to support a single (and rarely materialized) condition in
+your string appending line of <code class="language-plaintext highlighter-rouge">WHERE</code>s.</li>
+</ul>
+
+<p><a href="https://docs.spring.io/spring-data/jpa/docs/2.7.18/reference/html/">Spring Data JPA</a> abstracts this API even further and introduces
+the concept of <a href="https://docs.spring.io/spring-data/jpa/docs/2.7.18/reference/html/#specifications">Specifications</a> as small building blocks which can
+be combined and used with <code class="language-plaintext highlighter-rouge">JpaRepository</code> without the need to declare
+a query (method) for every needed combination.</p>
+
+<h2 id="guitar-inventory-example">Guitar Inventory Example</h2>
+
+<p>I’m not joking when I say that after using Criteria API/Specifications
+you’ll never want to write a single string query again. And to make
+that case, I’ve created a sample project using the three styles of
+query definitions. I’m using Spring Boot 2.7 which, while way past its
+open source support window, still runs Java 8 code. This choice is
+deliberate so this article can reach a much wider audience.</p>
+
+<p>If you’re not using Spring, but do have access to the
+<a href="https://javaee.github.io/javaee-spec/javadocs/javax/persistence/EntityManager.html">EntityManager</a>, then this article still applies to you. So I
+encourage you to download the <a href="https://github.com/daniel-aguilar/daniel-aguilar.github.io/tree/master/samples/jpa-criteria">source code</a> and follow along with
+me!</p>
+
+<p>The project consists of a guitar inventory management system for
+multiple brick-and-mortar store locations:</p>
+
+<p><img src="https://i.imgur.com/KXb2FDZ.png" alt="ER Diagram" /></p>
+
+<h3 id="business-logic">Business Logic</h3>
+
+<p>Suppose the client’s point of sale needs to fetch available guitars
+for sale based on the following rules:</p>
+
+<ol>
+  <li>By default, only the current store (Roseville) inventory is shown,
+but one can toggle the full catalog</li>
+  <li>Due to a shortage, no maple fretboards are available for sale</li>
+  <li>Dave is a new hire and only sells guitars priced at $100 or less</li>
+</ol>
+
+<p>We start by creating a <code class="language-plaintext highlighter-rouge">getInventory</code> method with a signature like so:</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="nc">List</span><span class="o">&lt;</span><span class="nc">Guitar</span><span class="o">&gt;</span> <span class="nf">getInventory</span><span class="o">(</span><span class="kt">boolean</span> <span class="n">showAllStores</span><span class="o">,</span> <span class="kt">int</span> <span class="n">salesPersonId</span><span class="o">);</span></code></pre></figure>
+
+<h3 id="using-jpql-string-queries">Using JPQL (String queries)</h3>
+
+<p>Because we wouldn’t want to define a new string query for <em>every</em>
+single escenario (which is subject to change), the usual approach is
+appending conditionals to the <code class="language-plaintext highlighter-rouge">WHERE</code> clause in the JPQL string:</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="c1">// CustomizedGuitarRepositoryImpl.java stub</span>
+<span class="nc">List</span><span class="o">&lt;</span><span class="nc">Guitar</span><span class="o">&gt;</span> <span class="nf">getInventoryUsingJPQL</span><span class="o">(</span><span class="kt">boolean</span> <span class="n">showAllStores</span><span class="o">,</span> <span class="kt">int</span> <span class="n">salesPersonId</span><span class="o">)</span> <span class="o">{</span>
+    <span class="kt">boolean</span> <span class="n">isNewHire</span> <span class="o">=</span> <span class="n">salesPersonId</span> <span class="o">==</span> <span class="no">DAVE</span><span class="o">;</span>
+
+     <span class="cm">/*
+      * I manually format the string here, but I've witnessed incredibly unreadable
+      * one-liners. Plus there's a lack of tooling to standardize this.
+      */</span>
+     <span class="nc">String</span> <span class="n">jpql</span> <span class="o">=</span>
+             <span class="s">"SELECT g "</span> <span class="o">+</span> <span class="c1">// We have to deliberately add spacing</span>
+             <span class="s">"FROM Guitar g "</span> <span class="o">+</span>
+             <span class="s">"JOIN g.fretboardWood f "</span> <span class="o">+</span>
+             <span class="s">"JOIN g.store s "</span> <span class="o">+</span> <span class="c1">// Premature JOIN clause (what if showAllStores is true?)</span>
+             <span class="s">"WHERE "</span><span class="o">;</span>
+
+    <span class="n">jpql</span> <span class="o">+=</span> <span class="s">"f.id != :maple AND "</span><span class="o">;</span>
+
+    <span class="k">if</span> <span class="o">(!</span><span class="n">showAllStores</span><span class="o">)</span> <span class="o">{</span>
+        <span class="n">jpql</span> <span class="o">+=</span> <span class="s">"s.id = :roseville AND "</span><span class="o">;</span>
+    <span class="o">}</span>
+
+    <span class="k">if</span> <span class="o">(</span><span class="n">isNewHire</span><span class="o">)</span> <span class="o">{</span>
+        <span class="n">jpql</span> <span class="o">+=</span> <span class="s">"g.price &lt;= :priceCap AND "</span><span class="o">;</span>
+    <span class="o">}</span>
+
+    <span class="n">jpql</span> <span class="o">+=</span> <span class="s">"1 = 1"</span><span class="o">;</span> <span class="c1">// Make sure the query does not end with AND</span>
+    
+    <span class="nc">Query</span> <span class="n">query</span> <span class="o">=</span> <span class="n">entityManager</span><span class="o">.</span><span class="na">createQuery</span><span class="o">(</span><span class="n">jpql</span><span class="o">);</span>
+    <span class="c1">// ... set query parameters</span>
+    <span class="k">return</span> <span class="n">query</span><span class="o">.</span><span class="na">getResultList</span><span class="o">();</span> <span class="c1">// No type safety</span>
+<span class="o">}</span></code></pre></figure>
+
+<p>While the current business logic is not very complex, there’s no doubt
+that the previous code is unfit for more elaborate requirements. The
+string mangling will quickly become unmaintainable and the lack of
+modularity makes it impossible to reuse the conditions in a different
+query or even expand upon it (i.e. additional filtering). On that last
+note, we might be tempted to filter the query results in a different
+layer of our application, like the front-end, but this means losing
+the performance of the query optimizer of our database to custom
+filtering code of a data structure (meaning we now have to maintain
+code in two different locations).</p>
+
+<h3 id="using-criteria-api">Using Criteria API</h3>
+
+<p>With Criteria API, each conditional is represented with a
+<a href="https://javaee.github.io/javaee-spec/javadocs/javax/persistence/criteria/Predicate.html">Predicate</a>. These can be manipulated programmatically, expanded
+upon, and reused across our codebase:</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="c1">// CustomizedGuitarRepositoryImpl.java stub</span>
+<span class="nc">List</span><span class="o">&lt;</span><span class="nc">Guitar</span><span class="o">&gt;</span> <span class="nf">getInventoryUsingCriteria</span><span class="o">(</span><span class="kt">boolean</span> <span class="n">showAllStores</span><span class="o">,</span> <span class="kt">int</span> <span class="n">salesPersonId</span><span class="o">)</span> <span class="o">{</span>
+    <span class="nc">CriteriaBuilder</span> <span class="n">cb</span> <span class="o">=</span> <span class="n">entityManager</span><span class="o">.</span><span class="na">getCriteriaBuilder</span><span class="o">();</span>
+    <span class="nc">CriteriaQuery</span><span class="o">&lt;</span><span class="nc">Guitar</span><span class="o">&gt;</span> <span class="n">cq</span> <span class="o">=</span> <span class="n">cb</span><span class="o">.</span><span class="na">createQuery</span><span class="o">(</span><span class="nc">Guitar</span><span class="o">.</span><span class="na">class</span><span class="o">);</span>
+    <span class="nc">Root</span><span class="o">&lt;</span><span class="nc">Guitar</span><span class="o">&gt;</span> <span class="n">guitar</span> <span class="o">=</span> <span class="n">cq</span><span class="o">.</span><span class="na">from</span><span class="o">(</span><span class="nc">Guitar</span><span class="o">.</span><span class="na">class</span><span class="o">);</span>
+    <span class="kt">boolean</span> <span class="n">isNewHire</span> <span class="o">=</span> <span class="n">salesPersonId</span> <span class="o">==</span> <span class="no">DAVE</span><span class="o">;</span>
+
+    <span class="nc">Predicate</span> <span class="n">noMapleFretboards</span> <span class="o">=</span> <span class="n">cb</span><span class="o">.</span><span class="na">notEqual</span><span class="o">(</span><span class="n">guitar</span><span class="o">.</span><span class="na">get</span><span class="o">(</span><span class="n">Guitar_</span><span class="o">.</span><span class="na">FRETBOARD_WOOD</span><span class="o">).</span><span class="na">get</span><span class="o">(</span><span class="n">FretboardWood_</span><span class="o">.</span><span class="na">ID</span><span class="o">),</span>
+            <span class="nc">FretboardWood</span><span class="o">.</span><span class="na">MAPLE</span><span class="o">);</span>
+    <span class="nc">Predicate</span> <span class="n">fromRosevilleStore</span> <span class="o">=</span> <span class="n">cb</span><span class="o">.</span><span class="na">equal</span><span class="o">(</span><span class="n">guitar</span><span class="o">.</span><span class="na">get</span><span class="o">(</span><span class="n">Guitar_</span><span class="o">.</span><span class="na">STORE</span><span class="o">).</span><span class="na">get</span><span class="o">(</span><span class="n">Store_</span><span class="o">.</span><span class="na">ID</span><span class="o">),</span> <span class="nc">Store</span><span class="o">.</span><span class="na">ROSEVILLE</span><span class="o">);</span>
+    <span class="nc">Predicate</span> <span class="n">atNewHirePriceCap</span> <span class="o">=</span> <span class="n">cb</span><span class="o">.</span><span class="na">lessThanOrEqualTo</span><span class="o">(</span><span class="n">guitar</span><span class="o">.</span><span class="na">get</span><span class="o">(</span><span class="n">Guitar_</span><span class="o">.</span><span class="na">PRICE</span><span class="o">),</span> <span class="no">NEW_HIRE_PRICE_CAP</span><span class="o">);</span>
+
+    <span class="nc">List</span><span class="o">&lt;</span><span class="nc">Predicate</span><span class="o">&gt;</span> <span class="n">predicates</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">ArrayList</span><span class="o">&lt;&gt;();</span>
+    <span class="n">predicates</span><span class="o">.</span><span class="na">add</span><span class="o">(</span><span class="n">noMapleFretboards</span><span class="o">);</span>
+
+    <span class="k">if</span> <span class="o">(!</span><span class="n">showAllStores</span><span class="o">)</span> <span class="o">{</span>
+        <span class="n">predicates</span><span class="o">.</span><span class="na">add</span><span class="o">(</span><span class="n">fromRosevilleStore</span><span class="o">);</span>
+    <span class="o">}</span>
+
+    <span class="k">if</span> <span class="o">(</span><span class="n">isNewHire</span><span class="o">)</span> <span class="o">{</span>
+        <span class="n">predicates</span><span class="o">.</span><span class="na">add</span><span class="o">(</span><span class="n">atNewHirePriceCap</span><span class="o">);</span>
+    <span class="o">}</span>
+
+    <span class="n">cq</span> <span class="o">=</span> <span class="n">cq</span><span class="o">.</span><span class="na">select</span><span class="o">(</span><span class="n">guitar</span><span class="o">).</span><span class="na">where</span><span class="o">(</span><span class="n">toVarargs</span><span class="o">(</span><span class="n">predicates</span><span class="o">));</span>
+    <span class="nc">TypedQuery</span><span class="o">&lt;</span><span class="nc">Guitar</span><span class="o">&gt;</span> <span class="n">query</span> <span class="o">=</span> <span class="n">entityManager</span><span class="o">.</span><span class="na">createQuery</span><span class="o">(</span><span class="n">cq</span><span class="o">);</span>
+    <span class="k">return</span> <span class="n">query</span><span class="o">.</span><span class="na">getResultList</span><span class="o">();</span>
+<span class="o">}</span>
+
+<span class="nc">Predicate</span><span class="o">[]</span> <span class="nf">toVarargs</span><span class="o">(</span><span class="nc">List</span><span class="o">&lt;</span><span class="nc">Predicate</span><span class="o">&gt;</span> <span class="n">predicates</span><span class="o">)</span> <span class="o">{</span>
+    <span class="k">return</span> <span class="n">predicates</span><span class="o">.</span><span class="na">toArray</span><span class="o">(</span><span class="k">new</span> <span class="nc">Predicate</span><span class="o">[</span><span class="n">predicates</span><span class="o">.</span><span class="na">size</span><span class="o">()]);</span>
+<span class="o">}</span></code></pre></figure>
+
+<p>Now you might be wondering just what the heck is this <code class="language-plaintext highlighter-rouge">Guitar_</code>
+business. <code class="language-plaintext highlighter-rouge">Guitar_</code> (and <code class="language-plaintext highlighter-rouge">FretboardWood_</code>) are metamodel classes. The
+metamodel class and its attributes are used in Criteria queries to
+refer to the managed entity classes and their persistent state and
+relationships. Metamodel classes are typically generated by annotation
+processors either at development time or at runtime. A metamodel class
+is created with a trailing underscore. <a href="https://hibernate.org/orm/tooling">Hibernate Metamodel
+Generator</a> is a popular annotation processor. The following is the
+autogenerated metamodel class for the <code class="language-plaintext highlighter-rouge">Guitar</code> <code class="language-plaintext highlighter-rouge">@Entity</code>:</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="c1">// Guitar_.java stub</span>
+<span class="c1">// ... package declaration and import statements</span>
+
+<span class="nd">@Generated</span><span class="o">(</span><span class="n">value</span> <span class="o">=</span> <span class="s">"org.hibernate.jpamodelgen.JPAMetaModelEntityProcessor"</span><span class="o">)</span>
+<span class="nd">@StaticMetamodel</span><span class="o">(</span><span class="nc">Guitar</span><span class="o">.</span><span class="na">class</span><span class="o">)</span>
+<span class="kd">public</span> <span class="kd">abstract</span> <span class="kd">class</span> <span class="nc">Guitar_</span> <span class="o">{</span>
+
+	<span class="kd">public</span> <span class="kd">static</span> <span class="kd">volatile</span> <span class="nc">SingularAttribute</span><span class="o">&lt;</span><span class="nc">Guitar</span><span class="o">,</span> <span class="nc">Integer</span><span class="o">&gt;</span> <span class="n">serialNumber</span><span class="o">;</span>
+	<span class="kd">public</span> <span class="kd">static</span> <span class="kd">volatile</span> <span class="nc">SingularAttribute</span><span class="o">&lt;</span><span class="nc">Guitar</span><span class="o">,</span> <span class="nc">BigDecimal</span><span class="o">&gt;</span> <span class="n">price</span><span class="o">;</span>
+	<span class="kd">public</span> <span class="kd">static</span> <span class="kd">volatile</span> <span class="nc">SingularAttribute</span><span class="o">&lt;</span><span class="nc">Guitar</span><span class="o">,</span> <span class="nc">Model</span><span class="o">&gt;</span> <span class="n">model</span><span class="o">;</span>
+	<span class="kd">public</span> <span class="kd">static</span> <span class="kd">volatile</span> <span class="nc">SingularAttribute</span><span class="o">&lt;</span><span class="nc">Guitar</span><span class="o">,</span> <span class="nc">BodyFinish</span><span class="o">&gt;</span> <span class="n">finish</span><span class="o">;</span>
+	<span class="kd">public</span> <span class="kd">static</span> <span class="kd">volatile</span> <span class="nc">SingularAttribute</span><span class="o">&lt;</span><span class="nc">Guitar</span><span class="o">,</span> <span class="nc">Store</span><span class="o">&gt;</span> <span class="n">store</span><span class="o">;</span>
+	<span class="kd">public</span> <span class="kd">static</span> <span class="kd">volatile</span> <span class="nc">SingularAttribute</span><span class="o">&lt;</span><span class="nc">Guitar</span><span class="o">,</span> <span class="nc">FretboardWood</span><span class="o">&gt;</span> <span class="n">fretboardWood</span><span class="o">;</span>
+
+	<span class="kd">public</span> <span class="kd">static</span> <span class="kd">final</span> <span class="nc">String</span> <span class="no">SERIAL_NUMBER</span> <span class="o">=</span> <span class="s">"serialNumber"</span><span class="o">;</span>
+	<span class="kd">public</span> <span class="kd">static</span> <span class="kd">final</span> <span class="nc">String</span> <span class="no">PRICE</span> <span class="o">=</span> <span class="s">"price"</span><span class="o">;</span>
+	<span class="kd">public</span> <span class="kd">static</span> <span class="kd">final</span> <span class="nc">String</span> <span class="no">MODEL</span> <span class="o">=</span> <span class="s">"model"</span><span class="o">;</span>
+	<span class="kd">public</span> <span class="kd">static</span> <span class="kd">final</span> <span class="nc">String</span> <span class="no">FINISH</span> <span class="o">=</span> <span class="s">"finish"</span><span class="o">;</span>
+	<span class="kd">public</span> <span class="kd">static</span> <span class="kd">final</span> <span class="nc">String</span> <span class="no">STORE</span> <span class="o">=</span> <span class="s">"store"</span><span class="o">;</span>
+	<span class="kd">public</span> <span class="kd">static</span> <span class="kd">final</span> <span class="nc">String</span> <span class="no">FRETBOARD_WOOD</span> <span class="o">=</span> <span class="s">"fretboardWood"</span><span class="o">;</span>
+
+<span class="o">}</span></code></pre></figure>
+
+<p>Thanks to these generated classes, our criteria queries always have
+the correct attribute names and types. They can easily be updated,
+should they ever change.</p>
+
+<h3 id="using-spring-data-jpa-specifications">Using Spring Data JPA Specifications</h3>
+
+<p>The last approach involves the declaration of
+specifications. <a href="https://docs.spring.io/spring-data/jpa/docs/2.7.18/api/org/springframework/data/jpa/domain/Specification.html">Specification</a> is a functional interface with the
+following signature:</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="n">jakarta</span><span class="o">.</span><span class="na">persistence</span><span class="o">.</span><span class="na">criteria</span><span class="o">.</span><span class="na">Predicate</span> <span class="nf">toPredicate</span><span class="o">(</span>
+        <span class="n">jakarta</span><span class="o">.</span><span class="na">persistence</span><span class="o">.</span><span class="na">criteria</span><span class="o">.</span><span class="na">Root</span><span class="o">&lt;</span><span class="no">T</span><span class="o">&gt;</span> <span class="n">root</span><span class="o">,</span>
+        <span class="n">jakarta</span><span class="o">.</span><span class="na">persistence</span><span class="o">.</span><span class="na">criteria</span><span class="o">.</span><span class="na">CriteriaQuery</span><span class="o">&lt;?&gt;</span> <span class="n">query</span><span class="o">,</span>
+        <span class="n">jakarta</span><span class="o">.</span><span class="na">persistence</span><span class="o">.</span><span class="na">criteria</span><span class="o">.</span><span class="na">CriteriaBuilder</span> <span class="n">criteriaBuilder</span><span class="o">)</span></code></pre></figure>
+
+<p>You typically write these as static methods in a Specs class like so:</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="c1">// GuitarSpecs.java</span>
+<span class="c1">// ... package declaration and import statements</span>
+<span class="kd">public</span> <span class="kd">class</span> <span class="nc">GuitarSpecs</span> <span class="o">{</span>
+
+    <span class="kd">public</span> <span class="kd">static</span> <span class="nc">Specification</span><span class="o">&lt;</span><span class="nc">Guitar</span><span class="o">&gt;</span> <span class="nf">noMapleFretboards</span><span class="o">()</span> <span class="o">{</span>
+        <span class="k">return</span> <span class="o">(</span><span class="n">root</span><span class="o">,</span> <span class="n">query</span><span class="o">,</span> <span class="n">builder</span><span class="o">)</span> <span class="o">-&gt;</span> <span class="o">{</span>
+            <span class="nc">Join</span><span class="o">&lt;</span><span class="nc">Guitar</span><span class="o">,</span> <span class="nc">FretboardWood</span><span class="o">&gt;</span> <span class="n">fretboardWood</span> <span class="o">=</span> <span class="n">root</span><span class="o">.</span><span class="na">join</span><span class="o">(</span><span class="n">Guitar_</span><span class="o">.</span><span class="na">FRETBOARD_WOOD</span><span class="o">);</span>
+            <span class="k">return</span> <span class="n">builder</span><span class="o">.</span><span class="na">notEqual</span><span class="o">(</span><span class="n">fretboardWood</span><span class="o">.</span><span class="na">get</span><span class="o">(</span><span class="n">FretboardWood_</span><span class="o">.</span><span class="na">ID</span><span class="o">),</span> <span class="nc">FretboardWood</span><span class="o">.</span><span class="na">MAPLE</span><span class="o">);</span>
+        <span class="o">};</span>
+    <span class="o">}</span>
+
+    <span class="kd">public</span> <span class="kd">static</span> <span class="nc">Specification</span><span class="o">&lt;</span><span class="nc">Guitar</span><span class="o">&gt;</span> <span class="nf">from</span><span class="o">(</span><span class="nc">Store</span> <span class="n">store</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">return</span> <span class="o">(</span><span class="n">root</span><span class="o">,</span> <span class="n">query</span><span class="o">,</span> <span class="n">builder</span><span class="o">)</span> <span class="o">-&gt;</span>
+                <span class="n">builder</span><span class="o">.</span><span class="na">equal</span><span class="o">(</span><span class="n">root</span><span class="o">.</span><span class="na">get</span><span class="o">(</span><span class="n">Guitar_</span><span class="o">.</span><span class="na">STORE</span><span class="o">),</span> <span class="n">store</span><span class="o">);</span>
+    <span class="o">}</span>
+
+    <span class="kd">public</span> <span class="kd">static</span> <span class="nc">Specification</span><span class="o">&lt;</span><span class="nc">Guitar</span><span class="o">&gt;</span> <span class="nf">limitPriceTo</span><span class="o">(</span><span class="nc">BigDecimal</span> <span class="n">value</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">return</span> <span class="o">(</span><span class="n">root</span><span class="o">,</span> <span class="n">query</span><span class="o">,</span> <span class="n">builder</span><span class="o">)</span> <span class="o">-&gt;</span>
+                <span class="n">builder</span><span class="o">.</span><span class="na">lessThanOrEqualTo</span><span class="o">(</span><span class="n">root</span><span class="o">.</span><span class="na">get</span><span class="o">(</span><span class="n">Guitar_</span><span class="o">.</span><span class="na">PRICE</span><span class="o">),</span> <span class="n">value</span><span class="o">);</span>
+    <span class="o">}</span>
+<span class="o">}</span></code></pre></figure>
+
+<p>Finally, we chain these specs with <code class="language-plaintext highlighter-rouge">.or()</code> &amp; <code class="language-plaintext highlighter-rouge">.and()</code> (as per our
+requirements) into a single spec, which we then pass to an
+all-too-familiar <code class="language-plaintext highlighter-rouge">findAll</code> method:</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="c1">// AppService.java stub</span>
+<span class="nc">List</span><span class="o">&lt;</span><span class="nc">Guitar</span><span class="o">&gt;</span> <span class="nf">getInventoryUsingSpecs</span><span class="o">(</span><span class="kt">boolean</span> <span class="n">showAllStores</span><span class="o">,</span> <span class="kt">int</span> <span class="n">salesPersonId</span><span class="o">)</span> <span class="o">{</span>
+    <span class="kt">boolean</span> <span class="n">isNewHire</span> <span class="o">=</span> <span class="n">salesPersonId</span> <span class="o">==</span> <span class="no">DAVE</span><span class="o">;</span>
+
+    <span class="nc">Specification</span><span class="o">&lt;</span><span class="nc">Guitar</span><span class="o">&gt;</span> <span class="n">spec</span> <span class="o">=</span> <span class="nc">GuitarSpecs</span><span class="o">.</span><span class="na">noMapleFretboards</span><span class="o">();</span>
+
+    <span class="k">if</span> <span class="o">(!</span><span class="n">showAllStores</span><span class="o">)</span> <span class="o">{</span>
+        <span class="nc">Store</span> <span class="n">roseville</span> <span class="o">=</span> <span class="n">storeRepository</span><span class="o">.</span><span class="na">getReferenceById</span><span class="o">(</span><span class="nc">Store</span><span class="o">.</span><span class="na">ROSEVILLE</span><span class="o">);</span>
+        <span class="n">spec</span> <span class="o">=</span> <span class="n">spec</span><span class="o">.</span><span class="na">and</span><span class="o">(</span><span class="nc">GuitarSpecs</span><span class="o">.</span><span class="na">from</span><span class="o">(</span><span class="n">roseville</span><span class="o">));</span>
+    <span class="o">}</span>
+
+    <span class="k">if</span> <span class="o">(</span><span class="n">isNewHire</span><span class="o">)</span> <span class="o">{</span>
+        <span class="n">spec</span> <span class="o">=</span> <span class="n">spec</span><span class="o">.</span><span class="na">and</span><span class="o">(</span><span class="nc">GuitarSpecs</span><span class="o">.</span><span class="na">limitPriceTo</span><span class="o">(</span><span class="no">NEW_HIRE_PRICE_CAP</span><span class="o">));</span>
+    <span class="o">}</span>
+
+    <span class="k">return</span> <span class="n">guitarRepository</span><span class="o">.</span><span class="na">findAll</span><span class="o">(</span><span class="n">spec</span><span class="o">);</span>
+<span class="o">}</span></code></pre></figure>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>JPQL queries are a perfectly valid JPA tool and are not going away any
+time soon (they’re well supported in Spring Data JPA with the
+<a href="https://docs.spring.io/spring-data/jpa/docs/2.7.18/api/org/springframework/data/jpa/repository/Query.html">@Query</a> annotation). But a key aspect of being a professional is
+choosing the right tool for the job, and the benefits of using
+Criteria API/Specifications for complex querying are far too many to
+be ignored in favor of string mangling. Criteria API represents an
+incredibly valuable force multiplier that’s available to you the
+moment JPQL is.</p>]]></content><author><name></name></author><summary type="html"><![CDATA[In a Java project, it’s not unusual to find database queries using the Jakarta Persistence Query Language (JPQL), a fairly easy to use language with a syntax akin to SQL. While this is a perfectly acceptable way to declare small queries, it can quickly spiral out of control for more advanced requirements. The Criteria API (and its Spring Data derivative Specifications) allow for a modular, programmatic, and type safe declaration of queries. It’s so good, you’ll probably never want to go back to writing string queries again!]]></summary></entry><entry><title type="html">Effective Use of SQL Identity Columns (Oracle &amp;amp; Postgres)</title><link href="/effective-use-identity-columns/" rel="alternate" type="text/html" title="Effective Use of SQL Identity Columns (Oracle &amp;amp; Postgres)" /><published>2024-03-03T00:00:00+00:00</published><updated>2024-03-03T00:00:00+00:00</updated><id>/effective-use-identity-columns</id><content type="html" xml:base="/effective-use-identity-columns/"><![CDATA[<p>The concept of SQL tables with an auto incremental column for its
+primary key it’s obviously not new, as it is easily implemented using
+sequences. Now, on December of 2003 the <a href="https://www.iso.org/standard/34132.html">SQL:2003</a> standard
+introduced the identity column type, along with the syntax <code class="language-plaintext highlighter-rouge">GENERATED
+AS IDENTITY</code>, which is currently supported by virtually all <abbr title="Relational Database Management System">RDBMS</abbr>
+providers. Let’s take a quick look at how we can declare primary key
+columns with auto generated identifiers, without relying on
+vendor-specific syntax!</p>
+
+<h2 id="plain-sequences">Plain Sequences</h2>
+
+<p>This is the most straightforward way to produce primary key
+values. Sequences generate unique integers and can be incremented by
+an arbitrary number like 1, 20, -1, etc. Consider the following table:</p>
+
+<figure class="highlight"><pre><code class="language-sql" data-lang="sql"><span class="k">CREATE</span> <span class="k">TABLE</span> <span class="n">student</span> <span class="p">(</span>
+  <span class="n">id</span> <span class="nb">INTEGER</span><span class="p">,</span>
+  <span class="n">name</span> <span class="nb">VARCHAR</span><span class="p">(</span><span class="mi">100</span><span class="p">)</span> <span class="k">NOT</span> <span class="k">NULL</span><span class="p">,</span>
+  <span class="k">CONSTRAINT</span> <span class="n">pk_student</span> <span class="k">PRIMARY</span> <span class="k">KEY</span> <span class="p">(</span><span class="n">id</span><span class="p">)</span>
+<span class="p">);</span></code></pre></figure>
+
+<p>We could then create a sequence to generate valid data for our <code class="language-plaintext highlighter-rouge">id</code>
+primary key column:</p>
+
+<figure class="highlight"><pre><code class="language-sql" data-lang="sql"><span class="k">CREATE</span> <span class="n">SEQUENCE</span> <span class="n">seq_student</span><span class="p">;</span>
+<span class="cm">/* Postgres specific syntax (i.e. the nextval function).
+Oracle's equivalent would be seq_student.NEXTVAL */</span>
+<span class="k">INSERT</span> <span class="k">INTO</span> <span class="n">student</span> <span class="p">(</span><span class="n">id</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span> <span class="k">VALUES</span> <span class="p">(</span><span class="n">nextval</span><span class="p">(</span><span class="s1">'seq_student'</span><span class="p">),</span> <span class="s1">'Victoria'</span><span class="p">);</span>
+<span class="k">INSERT</span> <span class="k">INTO</span> <span class="n">student</span> <span class="p">(</span><span class="n">id</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span> <span class="k">VALUES</span> <span class="p">(</span><span class="n">nextval</span><span class="p">(</span><span class="s1">'seq_student'</span><span class="p">),</span> <span class="s1">'Manuel'</span><span class="p">);</span></code></pre></figure>
+
+<p>This approach works fine but assumes some sort of nomenclature is in
+place—you know which sequence belongs to the <code class="language-plaintext highlighter-rouge">student</code> table due to
+its name alone. Another developer might mistakenly use a different
+sequence, an ad hoc value, or even drop the sequence entirely (no
+errors will be thrown). Without any corresponding documentation there
+really is no way to tell at a glance how <code class="language-plaintext highlighter-rouge">id</code> values are produced,
+perhaps they’re managed in a different system altogether.</p>
+
+<h2 id="attached-sequences">Attached Sequences</h2>
+
+<p>Auto incremental primary key columns are so common that Postgres
+offers a <a href="https://www.postgresql.org/docs/16/datatype-numeric.html#DATATYPE-SERIAL">shorthand</a>. We could redefine the <code class="language-plaintext highlighter-rouge">student</code> table like
+so:</p>
+
+<figure class="highlight"><pre><code class="language-sql" data-lang="sql"><span class="k">CREATE</span> <span class="k">TABLE</span> <span class="n">student</span> <span class="p">(</span>
+  <span class="n">id</span> <span class="nb">SERIAL</span><span class="p">,</span> <span class="c1">--shorthand type to create unique identifier columns </span>
+  <span class="n">name</span> <span class="nb">VARCHAR</span><span class="p">(</span><span class="mi">100</span><span class="p">)</span> <span class="k">NOT</span> <span class="k">NULL</span><span class="p">,</span>
+  <span class="k">CONSTRAINT</span> <span class="n">pk_student</span> <span class="k">PRIMARY</span> <span class="k">KEY</span> <span class="p">(</span><span class="n">id</span><span class="p">)</span>
+<span class="p">);</span>
+
+<span class="cm">/* No need to explicitly define a sequence.
+Later INSERT statements can omit the primary key column: */</span>
+<span class="k">INSERT</span> <span class="k">INTO</span> <span class="n">student</span> <span class="p">(</span><span class="n">name</span><span class="p">)</span> <span class="k">VALUES</span> <span class="p">(</span><span class="s1">'Victoria'</span><span class="p">);</span>
+<span class="k">INSERT</span> <span class="k">INTO</span> <span class="n">student</span> <span class="p">(</span><span class="n">name</span><span class="p">)</span> <span class="k">VALUES</span> <span class="p">(</span><span class="s1">'Manuel'</span><span class="p">);</span>
+
+<span class="c1">--Deleting the table also removes the associated sequence:</span>
+<span class="k">DROP</span> <span class="k">TABLE</span> <span class="n">student</span><span class="p">;</span></code></pre></figure>
+
+<p>In contrast, Oracle offers no shorthands and requires the declaration
+of a sequence beforehand, using the NEXTVAL function as the default
+value for the column:</p>
+
+<figure class="highlight"><pre><code class="language-sql" data-lang="sql"><span class="k">CREATE</span> <span class="n">SEQUENCE</span> <span class="n">seq_student</span><span class="p">;</span>
+<span class="k">CREATE</span> <span class="k">TABLE</span> <span class="n">student</span> <span class="p">(</span>
+  <span class="n">id</span> <span class="nb">INTEGER</span> <span class="k">DEFAULT</span> <span class="n">seq_student</span><span class="p">.</span><span class="n">NEXTVAL</span><span class="p">,</span>
+  <span class="n">name</span> <span class="n">VARCHAR2</span><span class="p">(</span><span class="mi">100</span><span class="p">)</span> <span class="k">NOT</span> <span class="k">NULL</span><span class="p">,</span>
+  <span class="k">CONSTRAINT</span> <span class="n">pk_student</span> <span class="k">PRIMARY</span> <span class="k">KEY</span> <span class="p">(</span><span class="n">id</span><span class="p">)</span>
+<span class="p">);</span>
+
+<span class="k">INSERT</span> <span class="k">INTO</span> <span class="n">student</span> <span class="p">(</span><span class="n">name</span><span class="p">)</span> <span class="k">VALUES</span> <span class="p">(</span><span class="s1">'Victoria'</span><span class="p">);</span>
+<span class="k">INSERT</span> <span class="k">INTO</span> <span class="n">student</span> <span class="p">(</span><span class="n">name</span><span class="p">)</span> <span class="k">VALUES</span> <span class="p">(</span><span class="s1">'Manuel'</span><span class="p">);</span></code></pre></figure>
+
+<p>These last two examples make the table <code class="language-plaintext highlighter-rouge">student</code> depend on a certain
+sequence, which can’t be dropped on a whim. The table declaration
+itself makes it very clear how the primary key values are generated,
+and thus our intentions more evident.</p>
+
+<p>Of course, other <abbr title="Relational Database Management System">RDBMS</abbr> vendors have their own unique ways of
+generating unique values (see what I did there?), such as MySQL’s
+<a href="https://dev.mysql.com/doc/refman/8.0/en/example-auto-increment.html">AUTO_INCREMENT attribute</a>, which also works in <a href="http://www.h2database.com/html/features.html?highlight=AUTO_INCREMENT&amp;search=AUTO_INCREMENT#firstFound">H2</a>:</p>
+
+<figure class="highlight"><pre><code class="language-sql" data-lang="sql"><span class="k">CREATE</span> <span class="k">TABLE</span> <span class="n">student</span> <span class="p">(</span>
+  <span class="n">id</span> <span class="nb">INT</span> <span class="n">AUTO_INCREMENT</span><span class="p">,</span>
+  <span class="n">name</span> <span class="nb">VARCHAR</span><span class="p">(</span><span class="mi">100</span><span class="p">)</span> <span class="k">NOT</span> <span class="k">NULL</span><span class="p">,</span>
+  <span class="k">CONSTRAINT</span> <span class="n">pk_student</span> <span class="k">PRIMARY</span> <span class="k">KEY</span> <span class="p">(</span><span class="n">id</span><span class="p">)</span>
+<span class="p">);</span>
+
+<span class="k">INSERT</span> <span class="k">INTO</span> <span class="n">student</span> <span class="p">(</span><span class="n">name</span><span class="p">)</span> <span class="k">VALUES</span> <span class="p">(</span><span class="s1">'Maria'</span><span class="p">);</span></code></pre></figure>
+
+<p>It’s important to keep in mind that auto generated clauses <strong>do not
+necessarily create the primary key constraint automatically</strong>.</p>
+
+<h2 id="identity-columns">Identity Columns</h2>
+
+<p>Identity columns are the ultimate way to declare auto generated
+primary key columns, using good ol’ standard SQL (ISO/IEC 9075) and
+nothing else. Here’s what the <code class="language-plaintext highlighter-rouge">student</code> table could be rewritten as,
+using the identity clause:</p>
+
+<figure class="highlight"><pre><code class="language-sql" data-lang="sql"><span class="k">CREATE</span> <span class="k">TABLE</span> <span class="n">student</span> <span class="p">(</span>
+  <span class="n">id</span> <span class="nb">INTEGER</span> <span class="k">GENERATED</span> <span class="k">BY</span> <span class="k">DEFAULT</span> <span class="k">AS</span> <span class="k">IDENTITY</span><span class="p">,</span>
+  <span class="n">name</span> <span class="nb">VARCHAR</span><span class="p">(</span><span class="mi">100</span><span class="p">)</span> <span class="k">NOT</span> <span class="k">NULL</span><span class="p">,</span>
+  <span class="k">CONSTRAINT</span> <span class="n">pk_student</span> <span class="k">PRIMARY</span> <span class="k">KEY</span> <span class="p">(</span><span class="n">id</span><span class="p">)</span>
+<span class="p">);</span>
+
+<span class="k">INSERT</span> <span class="k">INTO</span> <span class="n">student</span> <span class="p">(</span><span class="n">name</span><span class="p">)</span> <span class="k">VALUES</span> <span class="p">(</span><span class="s1">'Paige'</span><span class="p">);</span>
+<span class="k">SELECT</span> <span class="n">id</span> <span class="k">FROM</span> <span class="n">student</span> <span class="k">WHERE</span> <span class="n">name</span> <span class="o">=</span> <span class="s1">'Paige'</span><span class="p">;</span>
+<span class="c1">--&gt; 1</span>
+<span class="k">INSERT</span> <span class="k">INTO</span> <span class="n">student</span> <span class="p">(</span><span class="n">id</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span> <span class="k">values</span> <span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="s1">'Robert'</span><span class="p">);</span>
+<span class="c1">--&gt; Constraint violation error</span>
+
+<span class="c1">--No dangling sequences either:</span>
+<span class="k">DROP</span> <span class="k">TABLE</span> <span class="n">student</span><span class="p">;</span> <span class="c1">--purge (Oracle)</span></code></pre></figure>
+
+<h3 id="customized-sequence-properties">Customized Sequence Properties</h3>
+
+<p>Because identity columns have an implicit sequence attached to it,
+they can be tailored similarly to the <code class="language-plaintext highlighter-rouge">CREATE SEQUENCE</code> statement:</p>
+
+<figure class="highlight"><pre><code class="language-sql" data-lang="sql"><span class="k">CREATE</span> <span class="k">TABLE</span> <span class="n">student</span> <span class="p">(</span>
+  <span class="n">id</span> <span class="nb">INTEGER</span> <span class="k">GENERATED</span> <span class="n">ALWAYS</span> <span class="k">AS</span> <span class="k">IDENTITY</span> <span class="p">(</span>
+    <span class="k">START</span> <span class="k">WITH</span> <span class="mi">25</span> <span class="k">INCREMENT</span> <span class="k">BY</span> <span class="mi">25</span> <span class="c1">--Override default options</span>
+  <span class="p">),</span>
+  <span class="n">name</span> <span class="n">VARCHAR2</span><span class="p">(</span><span class="mi">100</span><span class="p">)</span> <span class="k">NOT</span> <span class="k">NULL</span>
+<span class="p">);</span>
+
+<span class="k">INSERT</span> <span class="k">INTO</span> <span class="n">student</span> <span class="p">(</span><span class="n">name</span><span class="p">)</span> <span class="k">VALUES</span> <span class="p">(</span><span class="s1">'Ben'</span><span class="p">);</span>
+<span class="k">INSERT</span> <span class="k">INTO</span> <span class="n">student</span> <span class="p">(</span><span class="n">name</span><span class="p">)</span> <span class="k">VALUES</span> <span class="p">(</span><span class="s1">'Wendy'</span><span class="p">);</span>
+
+<span class="k">SELECT</span> <span class="n">id</span> <span class="k">FROM</span> <span class="n">student</span> <span class="k">WHERE</span> <span class="n">name</span> <span class="o">=</span> <span class="s1">'Wendy'</span><span class="p">;</span>
+<span class="c1">--&gt; 50</span></code></pre></figure>
+
+<h3 id="always-or-by-default">ALWAYS or BY DEFAULT?</h3>
+
+<p>The identity column clause has two different flavors: identifiers can
+be generated <code class="language-plaintext highlighter-rouge">ALWAYS</code> or <code class="language-plaintext highlighter-rouge">BY DEFAULT</code>. The former instructs the
+database to always generate a value, and will actually throw an error
+if you do try to insert one yourself:</p>
+
+<figure class="highlight"><pre><code class="language-sql" data-lang="sql"><span class="k">CREATE</span> <span class="k">TABLE</span> <span class="n">test_error</span> <span class="p">(</span>
+  <span class="n">id_col</span> <span class="nb">INTEGER</span> <span class="k">GENERATED</span> <span class="n">ALWAYS</span> <span class="k">AS</span> <span class="k">IDENTITY</span>
+<span class="p">);</span>
+
+<span class="k">INSERT</span> <span class="k">INTO</span> <span class="n">test_error</span> <span class="p">(</span><span class="n">id_col</span><span class="p">)</span> <span class="k">VALUES</span> <span class="p">(</span><span class="mi">1</span><span class="p">);</span>
+<span class="c1">--&gt; ORA-32795: cannot insert into a generated always identity column</span></code></pre></figure>
+
+<p>Ultimately it all comes down to taste. Personally, I find the <code class="language-plaintext highlighter-rouge">BY
+DEFAULT</code> behaviour a bit more forgiving (say you need to change an ID
+for whatever reason).</p>
+
+<h3 id="orm-support">ORM Support</h3>
+
+<p>Object–relational mapping providers have great support for identity
+columns out-of-the-box. In fact, it’s the default for primary key
+properties in <a href="https://learn.microsoft.com/en-us/ef/core/modeling/generated-properties?tabs=data-annotations#primary-keys">Entity Framework Core</a>. Here’s how we could map the
+<code class="language-plaintext highlighter-rouge">student</code> table to a JPA Entity, using <a href="https://jakarta.ee/specifications/persistence/3.2/apidocs/jakarta.persistence/jakarta/persistence/generationtype#IDENTITY">GenerationType.IDENTITY</a>:</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="kn">package</span> <span class="nn">org.danielaguilar.samples</span><span class="o">;</span>
+
+<span class="kn">import</span> <span class="nn">jakarta.persistence.*</span><span class="o">;</span>
+
+<span class="nd">@Entity</span>
+<span class="kd">public</span> <span class="kd">class</span> <span class="nc">Student</span> <span class="o">{</span>
+
+	<span class="nd">@Id</span>
+	<span class="nd">@GeneratedValue</span><span class="o">(</span><span class="n">strategy</span> <span class="o">=</span> <span class="nc">GenerationType</span><span class="o">.</span><span class="na">IDENTITY</span><span class="o">)</span>
+	<span class="kd">private</span> <span class="kt">int</span> <span class="n">id</span><span class="o">;</span>
+	
+	<span class="kd">private</span> <span class="nc">String</span> <span class="n">name</span><span class="o">;</span>
+	
+	<span class="c1">// ...</span>
+<span class="o">}</span></code></pre></figure>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>Identity columns are a great and universal way to declare primary key
+columns for our tables. Because it’s part of the SQL standard, this
+particular syntax works with <em>almost</em> all the major <abbr title="Relational Database Management System">RDBMS</abbr> vendors,
+hopefully decreasing the cognitive load necessary when working on
+multiple systems.</p>]]></content><author><name></name></author><summary type="html"><![CDATA[The concept of SQL tables with an auto incremental column for its primary key it’s obviously not new, as it is easily implemented using sequences. Now, on December of 2003 the SQL:2003 standard introduced the identity column type, along with the syntax GENERATED AS IDENTITY, which is currently supported by virtually all RDBMS providers. Let’s take a quick look at how we can declare primary key columns with auto generated identifiers, without relying on vendor-specific syntax!]]></summary></entry><entry><title type="html">Going back in time with Oracle Flashback</title><link href="/oracle-flashback/" rel="alternate" type="text/html" title="Going back in time with Oracle Flashback" /><published>2021-12-20T00:00:00+00:00</published><updated>2021-12-20T00:00:00+00:00</updated><id>/oracle-flashback</id><content type="html" xml:base="/oracle-flashback/"><![CDATA[<p>You ever wished you could take a snapshot of your current Oracle
+development database? One that you could easily go back to in case of
+trouble. What if you started working on a feature, and accidentally
+mess up the business logic integrity in some way? Imagine the
+countless hours just trying to revert the damage done only to finally
+give up and end up recreating the database from scratch. You ever
+wished this could be done in a straightforward way (less than 3
+commands)? Me too!</p>
+
+<p>Advancements in container technology have made it unbelievably easy to
+spin up a development database in mere seconds. Gone are the days of
+pre-packaged, resource-hogging, inflexible virtual machines; or
+installing databases locally for a particular project, setting the
+correct schema permissions, and dealing with platform-specific issues,
+as you spend the rest of your much productive day praying the hard
+drive never dies out; or —worse— having no alternative other than
+to share a single database with your entire development team.</p>
+
+<p>We now have access to hundreds of official, actively maintained Docker
+images of our favorite databases, from Postgres to SQL Server. They’re
+all lighting fast and fully extensible, featuring sensible defaults
+(e.g. correct file system structure, proper user/group permissions),
+mappable ports, persistent volumes, among other great capabilities.</p>
+
+<p>Containers help speed up the development process by providing
+consistent, predictable &amp; easily reproducible environments to work
+with. It’s in this same spirit that today I bring you yet another tool
+you can add to your belt: Oracle’s <a href="https://docs.oracle.com/en/database/oracle/oracle-database/19/rcmrf/FLASHBACK-DATABASE.html">Flashback Database</a>.</p>
+
+<h1 id="what-is-flashback-database">What is Flashback Database?</h1>
+
+<p>Flashback Database is a neat feature of Oracle Database that lets you
+rewind your database to a defined point in time. Think of it as a
+<code class="language-plaintext highlighter-rouge">ROLLBACK</code> statement, but without the need of a transaction, and
+working at a much deeper level, as it deals with data files. What this
+means is that any new rows added to any table (or any new table
+added), sequences incremented, or modified stored procedures can be
+sent back in time to a pristine state. It’s flippin’ cool.</p>
+
+<h1 id="what-are-the-use-cases">What are the use cases?</h1>
+
+<p>You may think this is a feature a DBA would me most concerned with,
+but think again!</p>
+
+<p>I use flashbacks to rollback undesired changes on my local database,
+introduced by new features I’m working on. This is specially useful
+when working with a relatively complex (100+ objects) database.</p>
+
+<p>Perhaps I accidentally corrupted a specific row with invalid (i.e. not
+according to the business logic) data; or I suddenly have to switch
+branches and don’t wanna be left with a bunch of test data, or
+modified column datatypes that I can’t ORM’d my classes to; or maybe
+there’s a painfully elaborate domain logic process I have to perform
+within the application multiple times to get the correct data to work
+with.</p>
+
+<p>It’s a game of do and re-do. I can safely and confidently move my way
+around the database with a big <em>undo</em> button in my hand ready to be
+pressed at any time I need. This sort of flexibility, I believe,
+speeds up the development cycle considerably.</p>
+
+<h1 id="getting-started">Getting Started</h1>
+
+<p>As it is the case with most of my articles, this is a tutorial with a
+hands-on approach. If you have <a href="https://www.docker.com/">Docker</a> installed, you may follow
+along with me. I’ll be demonstrating how flashback database works
+using this <a href="https://github.com/daniel-aguilar/daniel-aguilar.github.io/tree/master/samples/oracle-flashback">sample project</a>, which has all of the configuration and
+scripts you will need.</p>
+
+<p>I’ll be working with release 19c, but this tutorial also applies to
+version 12c. There’s a caveat tho: <strong>flashback database is only
+available on Oracle Database Enterprise Edition</strong>.</p>
+
+<p>Oracle provides official Dockerfiles that facilitate the installation
+and configuration of an Oracle Database. Head over to their <a href="https://github.com/oracle/docker-images">GitHub
+repository</a>, and follow the instructions to build a local oracle
+database image (SingleInstance).</p>
+
+<h1 id="running-the-sample-project">Running the Sample Project</h1>
+
+<p>Once you have an Oracle Database image ready (in this case named
+<code class="language-plaintext highlighter-rouge">oracle/database:19.3.0-ee</code>), you can execute the <code class="language-plaintext highlighter-rouge">init.sh</code>
+script. This starts an Oracle Database container, automatically
+configures flashback database (which is not enabled by default),
+creates a pluggable database with a test user and a couple of tables,
+then finally creates a restore point. Here’s what we’ll be working
+with:</p>
+
+<p><img src="https://i.imgur.com/yFSmmlw.png" alt="Database Design" /></p>
+
+<p>You can connect to the database using the user <code class="language-plaintext highlighter-rouge">scott</code>, password
+<code class="language-plaintext highlighter-rouge">tiger</code>. The hostname would be the IP address that has been assigned
+to your container, which you can find out what it is via <code class="language-plaintext highlighter-rouge">docker
+inspect oracle-db</code>. The port and service name correspond to 1521 and
+<code class="language-plaintext highlighter-rouge">LOCALPDB</code> respectively.</p>
+
+<figure class="highlight"><pre><code class="language-bash" data-lang="bash"><span class="nv">$ </span>docker inspect oracle-db | <span class="nb">grep </span>IPAddress
+            <span class="s2">"SecondaryIPAddresses"</span>: null,
+            <span class="s2">"IPAddress"</span>: <span class="s2">"172.17.0.2"</span>,
+                    <span class="s2">"IPAddress"</span>: <span class="s2">"172.17.0.2"</span>,</code></pre></figure>
+
+<h1 id="making-changes">Making Changes</h1>
+
+<p>You can query existing restore points with the following statement:
+<code class="language-plaintext highlighter-rouge">SELECT * FROM V$RESTORE_POINT;</code>. If you run the previous command,
+you’ll find out the <code class="language-plaintext highlighter-rouge">BEFORE_FEATURE</code> restore point exists, which means
+we can safely start doing some changes. The <code class="language-plaintext highlighter-rouge">feature.sql</code> script
+includes the following:</p>
+
+<figure class="highlight"><pre><code class="language-sql" data-lang="sql"><span class="k">INSERT</span> <span class="k">INTO</span> <span class="n">guitar</span> <span class="p">(</span><span class="n">brand_id</span><span class="p">,</span> <span class="n">model</span><span class="p">)</span> <span class="k">VALUES</span> <span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="s1">'Les Paul'</span><span class="p">);</span>
+<span class="k">CREATE</span> <span class="k">TABLE</span> <span class="n">guitar_catalog</span> <span class="p">(</span>
+    <span class="n">id</span> <span class="n">NUMBER</span> <span class="k">GENERATED</span> <span class="k">AS</span> <span class="k">IDENTITY</span><span class="p">,</span>
+    <span class="n">guitar_id</span> <span class="n">NUMBER</span><span class="p">,</span>
+    <span class="n">quantity</span> <span class="n">NUMBER</span><span class="p">,</span>
+    <span class="k">CONSTRAINT</span> <span class="n">guitar_catalog_fk</span>
+        <span class="k">FOREIGN</span> <span class="k">KEY</span> <span class="p">(</span><span class="n">guitar_id</span><span class="p">)</span> <span class="k">REFERENCES</span> <span class="n">guitar</span> <span class="p">(</span><span class="n">id</span><span class="p">)</span>
+<span class="p">);</span></code></pre></figure>
+
+<p>We may now drop tables, insert hundreds of new rows, create sequences,
+you get the idea. Naturally, there’s so much data Oracle can hold
+about the new state of the database (10GB in this case, but it can be
+configured), so I wouldn’t recommend abusing this feature too
+much. Remember, this is a development database after all.</p>
+
+<h1 id="performing-the-flashback">Performing the Flashback</h1>
+
+<p>To perform a flashback, we can connect directly to our database via
+RMAN (Recovery Manager), using OS authentication. Start by executing a
+shell in the running container:</p>
+
+<figure class="highlight"><pre><code class="language-bash" data-lang="bash"><span class="nv">$ </span>docker <span class="nb">exec</span> <span class="nt">-it</span> oracle-db bash
+<span class="nv">$ </span><span class="nb">export </span><span class="nv">ORACLE_SID</span><span class="o">=</span>ORCLCDB
+<span class="nv">$ </span><span class="nb">export </span><span class="nv">ORACLE_HOME</span><span class="o">=</span>/opt/oracle/product/19c/dbhome_1
+<span class="nv">$ </span>rman target /</code></pre></figure>
+
+<p>At this point, it’s only a matter of closing the pluggable database
+(PDB), perform the actual flashback, and finally reopening the PDB
+(with the <code class="language-plaintext highlighter-rouge">RESETLOGS</code> option):</p>
+
+<figure class="highlight"><pre><code class="language-sql" data-lang="sql"><span class="k">ALTER</span> <span class="n">PLUGGABLE</span> <span class="k">DATABASE</span> <span class="n">LOCALPDB</span> <span class="k">CLOSE</span> <span class="k">IMMEDIATE</span><span class="p">;</span>
+<span class="n">FLASHBACK</span> <span class="n">PLUGGABLE</span> <span class="k">DATABASE</span> <span class="n">LOCALPDB</span> <span class="k">TO</span> <span class="n">RESTORE</span> <span class="n">POINT</span> <span class="n">BEFORE_FEATURE</span><span class="p">;</span>
+<span class="k">ALTER</span> <span class="n">PLUGGABLE</span> <span class="k">DATABASE</span> <span class="n">LOCALPDB</span> <span class="k">OPEN</span> <span class="n">RESETLOGS</span><span class="p">;</span></code></pre></figure>
+
+<p>And that’s it! The flashback is now complete, and you can login with
+<code class="language-plaintext highlighter-rouge">scott</code> again to check the current state of the database. Everything
+should be how we initially started.</p>
+
+<h1 id="conclusion">Conclusion</h1>
+
+<p>This isn’t by any means a guide to database flashbacks at all, far
+from it. This is a demonstration of a useful feature you can apply to
+your daily software development work. I obviously had to skim over so
+many details, (such as undoing a flashback using <code class="language-plaintext highlighter-rouge">RECOVER</code>), but
+hopefully you could get a general idea of what this is all about!</p>
+
+<p>If you’d like to learn more, you can visit the <a href="https://docs.oracle.com/en/database/oracle/oracle-database/19/rcmrf/FLASHBACK-DATABASE.html">official
+reference</a>, which has a more in-depth explanation of what is going
+on, plus some other great examples.</p>]]></content><author><name></name></author><summary type="html"><![CDATA[You ever wished you could take a snapshot of your current Oracle development database? One that you could easily go back to in case of trouble. What if you started working on a feature, and accidentally mess up the business logic integrity in some way? Imagine the countless hours just trying to revert the damage done only to finally give up and end up recreating the database from scratch. You ever wished this could be done in a straightforward way (less than 3 commands)? Me too!]]></summary></entry><entry><title type="html">Introduction to BSD Sockets</title><link href="/introduction-bsd-sockets/" rel="alternate" type="text/html" title="Introduction to BSD Sockets" /><published>2020-07-06T00:00:00+00:00</published><updated>2020-07-06T00:00:00+00:00</updated><id>/introduction-bsd-sockets</id><content type="html" xml:base="/introduction-bsd-sockets/"><![CDATA[<p>The operating system truly makes developers’ jobs much more easier: we don’t
+have to worry about the boring details, and can focus on what our programs do
+instead. Keeping with the same philosophy of abstracting the details, and thanks
+to the people at UC Berkeley, communicating over a network isn’t that much
+different as writing some data to a file.</p>
+
+<p>The example I’ll be working on will be the classic client-server model, using
+IPv4. The server will be listening for messages (printing them out as they come)
+and react accordingly, while the client sends messages and outputs responses
+from the server. The server runs in a Docker container in its own network. You
+can find the example <a href="https://github.com/daniel-aguilar/daniel-aguilar.github.io/tree/master/samples/bsd-sockets">here</a>.</p>
+
+<p>The example is written in C. Most modern programming languages provide support
+for (the now called low-level) sockets, but what better way to learn other than
+using the original implementation?</p>
+
+<h2 id="the-basics">The Basics</h2>
+
+<p>The original implementation of the TCP/IP stack for Unix-like systems appeared
+in 4.2BSD, it was later adopted as a POSIX standard. As I mentioned, it was
+written in C, and introduced the concept of the socket—an endpoint for
+communication between processes.</p>
+
+<p>There are many <em>domains</em> of sockets (also known as <em>families</em>), but the 2 most
+popular you’ll encounter are <em>UNIX domains</em> and <em>Internet protocols</em>. While I’ll
+be discussing the Internet protocols family of sockets in this article, UNIX
+domain sockets are not that different. They’re used for efficient local
+communication (on the same machine). The Docker daemon, for instance, uses this
+type of socket.</p>
+
+<p>Sockets also have <em>types</em>. I’ll be working with stream-type sockets
+(<code class="language-plaintext highlighter-rouge">SOCK_STREAM</code>), corresponding to a TCP socket.</p>
+
+<h3 id="the-telephone-analogy">The Telephone Analogy</h3>
+
+<p>A well-known way of explaining sockets is using the telephone analogy. In order
+to receive a call, you must first install a phone, have a phone number, hear it
+ring, and finally take the call. Generally, you do not need to know the caller’s
+number.</p>
+
+<p>To make a phone call, the process is somewhat the same in that you still need a
+phone, but instead of passively listen for incoming calls, you dial a number
+instead, and wait for someone to answer.</p>
+
+<p>Sockets work like telephones. On the server side, you create a <code class="language-plaintext highlighter-rouge">socket()</code>,
+<code class="language-plaintext highlighter-rouge">bind()</code> a local address to it, <code class="language-plaintext highlighter-rouge">listen()</code> for connections, and finally
+<code class="language-plaintext highlighter-rouge">accept()</code> one. On the client side, you create a <code class="language-plaintext highlighter-rouge">socket()</code> and <code class="language-plaintext highlighter-rouge">connect()</code> to
+an address.</p>
+
+<h2 id="working-with-addresses">Working with Addresses</h2>
+
+<p>While we can work with dot-decimal notation IP addresses (e.g. 192.168.1.110),
+ultimately they have to be converted to binary form (network byte order). Both
+<code class="language-plaintext highlighter-rouge">bind()</code> and <code class="language-plaintext highlighter-rouge">connect()</code> have a <code class="language-plaintext highlighter-rouge">sockaddr</code> argument, a struct that holds data
+about an address. You will see something like this in the client and server
+code:</p>
+
+<figure class="highlight"><pre><code class="language-c" data-lang="c"><span class="k">struct</span> <span class="n">sockaddr_in</span> <span class="n">address</span><span class="p">;</span>
+<span class="k">struct</span> <span class="n">in_addr</span> <span class="n">ip</span><span class="p">;</span>
+
+<span class="n">inet_aton</span><span class="p">(</span><span class="s">"192.168.1.110"</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">ip</span><span class="p">);</span>
+<span class="n">address</span><span class="p">.</span><span class="n">sin_addr</span> <span class="o">=</span> <span class="n">ip</span><span class="p">;</span>
+<span class="n">address</span><span class="p">.</span><span class="n">sin_port</span> <span class="o">=</span> <span class="n">htons</span><span class="p">(</span><span class="mi">8080</span><span class="p">);</span>
+<span class="n">address</span><span class="p">.</span><span class="n">sin_family</span> <span class="o">=</span> <span class="n">AF_INET</span><span class="p">;</span></code></pre></figure>
+
+<p>We can use the <code class="language-plaintext highlighter-rouge">inet_aton()</code> and <code class="language-plaintext highlighter-rouge">htons()</code> utilities to convert such
+values. Finally, we need to specify what kind of address we’re talking
+about. The address family for IPv4 Internet protocols is <code class="language-plaintext highlighter-rouge">AF_INET</code>.</p>
+
+<h2 id="server-code">Server Code</h2>
+
+<p>This server will implement a simple protocol consisting of two commands: <code class="language-plaintext highlighter-rouge">HELLO</code>
+and <code class="language-plaintext highlighter-rouge">BYE</code>. If the client sends a <code class="language-plaintext highlighter-rouge">HELLO</code> message, the server then replies with
+“HI”, while a <code class="language-plaintext highlighter-rouge">BYE</code> message instructs the server to shut down. All messages
+received must be sent to stdout.</p>
+
+<figure class="highlight"><pre><code class="language-c" data-lang="c"><table class="rouge-table"><tbody><tr><td class="gutter gl"><pre class="lineno">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+</pre></td><td class="code"><pre><span class="c1">// server.c stub</span>
+<span class="kt">char</span> <span class="n">buffer</span><span class="p">[</span><span class="mi">12</span><span class="p">];</span>
+<span class="kt">int</span> <span class="n">data_socket</span><span class="p">;</span>
+<span class="kt">int</span> <span class="n">conn_socket</span> <span class="o">=</span> <span class="n">socket</span><span class="p">(</span><span class="n">AF_INET</span><span class="p">,</span> <span class="n">SOCK_STREAM</span><span class="p">,</span> <span class="mi">0</span><span class="p">);</span>
+<span class="n">bind</span><span class="p">(</span><span class="n">conn_socket</span><span class="p">,</span> <span class="p">(</span><span class="k">const</span> <span class="k">struct</span> <span class="n">sockaddr</span> <span class="o">*</span><span class="p">)</span> <span class="o">&amp;</span><span class="n">address</span><span class="p">,</span>
+     <span class="k">sizeof</span><span class="p">(</span><span class="k">struct</span> <span class="n">sockaddr_in</span><span class="p">));</span>
+<span class="n">listen</span><span class="p">(</span><span class="n">conn_socket</span><span class="p">,</span> <span class="mi">5</span><span class="p">);</span>
+
+<span class="k">for</span> <span class="p">(;;)</span> <span class="p">{</span>
+	<span class="n">data_socket</span> <span class="o">=</span> <span class="n">accept</span><span class="p">(</span><span class="n">conn_socket</span><span class="p">,</span> <span class="nb">NULL</span><span class="p">,</span> <span class="nb">NULL</span><span class="p">);</span>
+	<span class="n">read</span><span class="p">(</span><span class="n">data_socket</span><span class="p">,</span> <span class="n">buffer</span><span class="p">,</span> <span class="mi">12</span><span class="p">);</span>
+	<span class="n">buffer</span><span class="p">[</span><span class="mi">11</span><span class="p">]</span> <span class="o">=</span> <span class="sc">'\0'</span><span class="p">;</span>
+	<span class="n">puts</span><span class="p">(</span><span class="n">buffer</span><span class="p">);</span>
+
+	<span class="k">if</span> <span class="p">(</span><span class="n">strcmp</span><span class="p">(</span><span class="n">buffer</span><span class="p">,</span> <span class="s">"HELLO"</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span> <span class="p">{</span>
+		<span class="n">strcpy</span><span class="p">(</span><span class="n">buffer</span><span class="p">,</span> <span class="s">"HI</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+		<span class="n">write</span><span class="p">(</span><span class="n">data_socket</span><span class="p">,</span> <span class="n">buffer</span><span class="p">,</span> <span class="mi">12</span><span class="p">);</span>
+	<span class="p">}</span>
+
+	<span class="n">close</span><span class="p">(</span><span class="n">data_socket</span><span class="p">);</span>
+	<span class="k">if</span> <span class="p">(</span><span class="n">strcmp</span><span class="p">(</span><span class="n">buffer</span><span class="p">,</span> <span class="s">"BYE"</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span> <span class="p">{</span>
+		<span class="k">break</span><span class="p">;</span>
+	<span class="p">}</span>
+<span class="p">}</span>
+
+<span class="n">close</span><span class="p">(</span><span class="n">conn_socket</span><span class="p">);</span>
+</pre></td></tr></tbody></table></code></pre></figure>
+
+<p>Assuming <code class="language-plaintext highlighter-rouge">address</code> has been correctly assigned, line 4 creates an IPv4
+<em>listening</em> socket. I say listening because once we accept a connection, a new
+socket is created, so as to support multiple concurrent connections. Line 5
+binds the previous socket to an address, while line 7 configures the socket to
+listen for up to 5 pending connections in a queue.</p>
+
+<p>The main loop consists of accepting a new connection, reading 12 bytes from the
+socket, implement a HELLO protocol, and then close the data socket. If a <code class="language-plaintext highlighter-rouge">BYE</code>
+command is received, the listening socket is closed too.</p>
+
+<p>If you’ve worked with file I/O in C before, you’ll notice the process is
+essentially the same. <code class="language-plaintext highlighter-rouge">data_socket</code> is a file descriptor and so the standard
+<code class="language-plaintext highlighter-rouge">read()</code> and <code class="language-plaintext highlighter-rouge">write()</code> operations work as they would with any other file.</p>
+
+<h2 id="client-code">Client Code</h2>
+
+<figure class="highlight"><pre><code class="language-c" data-lang="c"><span class="c1">// client.c stub</span>
+<span class="kt">char</span> <span class="n">response</span><span class="p">[</span><span class="mi">12</span><span class="p">];</span>
+
+<span class="kt">int</span> <span class="n">fd</span> <span class="o">=</span> <span class="n">socket</span><span class="p">(</span><span class="n">AF_INET</span><span class="p">,</span> <span class="n">SOCK_STREAM</span><span class="p">,</span> <span class="mi">0</span><span class="p">);</span>
+<span class="n">connect</span><span class="p">(</span><span class="n">fd</span><span class="p">,</span> <span class="p">(</span><span class="k">const</span> <span class="k">struct</span> <span class="n">sockaddr</span> <span class="o">*</span><span class="p">)</span> <span class="o">&amp;</span><span class="n">address</span><span class="p">,</span>
+        <span class="k">sizeof</span><span class="p">(</span><span class="k">struct</span> <span class="n">sockaddr_in</span><span class="p">));</span>
+
+<span class="n">write</span><span class="p">(</span><span class="n">fd</span><span class="p">,</span> <span class="s">"HELLO"</span><span class="p">,</span> <span class="mi">5</span><span class="p">);</span>
+<span class="n">read</span><span class="p">(</span><span class="n">fd</span><span class="p">,</span> <span class="n">response</span><span class="p">,</span> <span class="mi">12</span><span class="p">);</span>
+<span class="n">printf</span><span class="p">(</span><span class="n">response</span><span class="p">);</span>
+<span class="n">close</span><span class="p">(</span><span class="n">fd</span><span class="p">);</span></code></pre></figure>
+
+<p>The client can be significantly smaller as it only has one task. Again, here I’m
+assuming <code class="language-plaintext highlighter-rouge">address</code> its been properly assigned. In this particular instance I am
+expected to received a “HI” response from the server.</p>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>I hope this explanation was clear. I tried to keep the code concise by removing
+includes, error handling noise and other off topic details, but I encourage you
+to download the <a href="https://github.com/daniel-aguilar/daniel-aguilar.github.io/tree/master/samples/bsd-sockets">full example</a> and try it yourself.</p>]]></content><author><name></name></author><summary type="html"><![CDATA[The operating system truly makes developers’ jobs much more easier: we don’t have to worry about the boring details, and can focus on what our programs do instead. Keeping with the same philosophy of abstracting the details, and thanks to the people at UC Berkeley, communicating over a network isn’t that much different as writing some data to a file.]]></summary></entry><entry><title type="html">Container Authentication with Spring Security</title><link href="/container-auth-spring-security/" rel="alternate" type="text/html" title="Container Authentication with Spring Security" /><published>2020-05-30T00:00:00+00:00</published><updated>2020-05-30T00:00:00+00:00</updated><id>/container-auth-spring-security</id><content type="html" xml:base="/container-auth-spring-security/"><![CDATA[<p>Spring Security is a framework full of solid features, most of them working
+nearly out of the box. Yet it’s still flexible enough to adapt to your
+particular requirements. In this article I’ll demonstrate how to integrate your
+Spring application authentication with a servlet container, such as WebSphere
+Application Server (WAS) or Tomcat, using Spring Security.</p>
+
+<p>A little bit of background before we get started. I was assigned a new project
+at work (Java web application running in a WAS), with one of the requirements
+being the ability to authenticate existing users in a directory service,
+specifically an LDAP server. While doing my research at the time, I found myself
+either digging through old forum posts, inspecting inherited and unmaintained
+code, or reading a whole spec in search for a particular detail. So I thought
+I’d write an article about it, with completeness being the main goal.</p>
+
+<p>I’ll be working with OpenJDK 8, Spring Boot 2.3.0, Spring Security 5.3.2 and the
+Jetty Maven plugin, which spins up a servlet container ideal for development. A
+working sample of the following code can be found <a href="https://github.com/daniel-aguilar/daniel-aguilar.github.io/tree/master/samples/jee-auth">here</a>.</p>
+
+<h2 id="form-based-authentication">Form Based Authentication</h2>
+
+<p>The first step is setting up the security configuration over at our <em>deployment
+descriptor</em> (i.e. <code class="language-plaintext highlighter-rouge">web.xml</code>). FORM based login just so happens to be our ideal
+authentication mechanism, users are presented with a login page where they enter
+their credentials. Under the hood, the action of the form is <code class="language-plaintext highlighter-rouge">j_security_check</code>,
+where we’ll be POSTing a <code class="language-plaintext highlighter-rouge">j_username</code> and <code class="language-plaintext highlighter-rouge">j_password</code>. The server then returns
+a cookie <code class="language-plaintext highlighter-rouge">JSESSIONID</code> used to validate any other requests that require
+authentication (and <em>authorization</em>, or access on the basis of roles). Here’s
+how it’s done:</p>
+
+<figure class="highlight"><pre><code class="language-xml" data-lang="xml"><span class="c">&lt;!-- web.xml excerpt --&gt;</span>
+<span class="nt">&lt;login-config&gt;</span>
+  <span class="nt">&lt;auth-method&gt;</span>FORM<span class="nt">&lt;/auth-method&gt;</span>
+  <span class="nt">&lt;realm-name&gt;</span>realm<span class="nt">&lt;/realm-name&gt;</span>
+  <span class="nt">&lt;form-login-config&gt;</span>
+    <span class="nt">&lt;form-login-page&gt;</span>/login<span class="nt">&lt;/form-login-page&gt;</span>
+    <span class="nt">&lt;form-error-page&gt;</span>/login?error<span class="nt">&lt;/form-error-page&gt;</span>
+  <span class="nt">&lt;/form-login-config&gt;</span>
+<span class="nt">&lt;/login-config&gt;</span></code></pre></figure>
+
+<p>The <code class="language-plaintext highlighter-rouge">realm-name</code> indicates the <em>LDAP realm name</em>. Users are stored there, and we
+really don’t care about the details. The realm name should be provided by the
+application server administrators.</p>
+
+<p>An additional <code class="language-plaintext highlighter-rouge">form-login-config</code> is required, specifying the login and error
+page URLs, where the user will be automatically redirected when unauthenticated,
+or when the credentials don’t match, respectively.</p>
+
+<p>Over at our login page, we would need an HTML form. The <a href="https://javaee.github.io/servlet-spec/downloads/servlet-3.1/Final/servlet-3_1-final.pdf">servlet spec</a> offers
+an example of how that might look like:</p>
+
+<figure class="highlight"><pre><code class="language-html" data-lang="html"><span class="nt">&lt;form</span> <span class="na">method=</span><span class="s">"POST"</span> <span class="na">action=</span><span class="s">"j_security_check"</span><span class="nt">&gt;</span>
+  <span class="nt">&lt;input</span> <span class="na">type=</span><span class="s">"text"</span> <span class="na">name=</span><span class="s">"j_username"</span><span class="nt">&gt;</span>
+  <span class="nt">&lt;input</span> <span class="na">type=</span><span class="s">"password"</span> <span class="na">name=</span><span class="s">"j_password"</span> <span class="na">autocomplete=</span><span class="s">"off"</span><span class="nt">&gt;</span>
+<span class="nt">&lt;/form&gt;</span></code></pre></figure>
+
+<h3 id="defining-the-roles">Defining the Roles</h3>
+
+<p>One last piece of configuration we can specify in the deployment descriptor is
+the <code class="language-plaintext highlighter-rouge">security-role</code> element. We use it to define—well—security roles (with
+an optional description for each one):</p>
+
+<figure class="highlight"><pre><code class="language-xml" data-lang="xml"><span class="c">&lt;!-- web.xml excerpt --&gt;</span>
+<span class="nt">&lt;security-role&gt;</span>
+  <span class="nt">&lt;description&gt;</span>Application Administrator<span class="nt">&lt;/description&gt;</span>
+  <span class="nt">&lt;role-name&gt;</span>ROLE_ADMIN<span class="nt">&lt;/role-name&gt;</span>
+<span class="nt">&lt;/security-role&gt;</span></code></pre></figure>
+
+<p>Do notice I added the <code class="language-plaintext highlighter-rouge">ROLE_</code> prefix to the role name. If you’ve ever worked
+with Spring Security before, you know that’s a naming convention.</p>
+
+<h2 id="spring-security-configuration">Spring Security Configuration</h2>
+
+<p>That’s it for the <code class="language-plaintext highlighter-rouge">web.xml</code>, Spring Security takes care of the rest. For this
+step I prefer the Java configuration over XML. It consists of overriding the
+<code class="language-plaintext highlighter-rouge">configure</code> method:</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="kd">protected</span> <span class="kt">void</span> <span class="nf">configure</span><span class="o">(</span><span class="nc">HttpSecurity</span> <span class="n">http</span><span class="o">)</span> <span class="kd">throws</span> <span class="nc">Exception</span> <span class="o">{</span>
+    <span class="n">http</span><span class="o">.</span><span class="na">authorizeRequests</span><span class="o">(</span><span class="n">requests</span> <span class="o">-&gt;</span> <span class="n">requests</span>
+        <span class="o">.</span><span class="na">antMatchers</span><span class="o">(</span><span class="s">"/admin/**"</span><span class="o">).</span><span class="na">hasRole</span><span class="o">(</span><span class="s">"ADMIN"</span><span class="o">)</span>
+        <span class="o">.</span><span class="na">anyRequest</span><span class="o">().</span><span class="na">permitAll</span><span class="o">()</span>
+    <span class="o">);</span>
+    <span class="n">http</span><span class="o">.</span><span class="na">jee</span><span class="o">(</span><span class="n">jee</span> <span class="o">-&gt;</span> <span class="n">jee</span><span class="o">.</span><span class="na">mappableAuthorities</span><span class="o">(</span><span class="s">"ROLE_ADMIN"</span><span class="o">));</span>
+<span class="o">}</span></code></pre></figure>
+
+<p>Here I’m securing the <code class="language-plaintext highlighter-rouge">/admin/**</code> route so only the <code class="language-plaintext highlighter-rouge">ADMIN</code> role can access it
+(the <code class="language-plaintext highlighter-rouge">ROLE_</code> prefix is added automatically), while the rest is allowed to
+anyone. immediately after that is where we tell Spring Security to integrate
+with the Java EE container authentication (the <a href="https://docs.spring.io/spring-security/site/docs/5.3.2.RELEASE/reference/html5/#servlet-preauth">docs</a> refer to this scenario
+as <em>pre-authentication</em>), importing the previously defined roles via the
+<code class="language-plaintext highlighter-rouge">mappableAuthorities</code> method.</p>
+
+<p>Spring Security is highly customizable, the documentation has all the classes
+that can be extended to modify the default behaviour, such as loading certain
+user information from a database (email address, full name, etc.) using a custom
+<code class="language-plaintext highlighter-rouge">UserDetailsService</code>.</p>
+
+<h2 id="the-results">The Results</h2>
+
+<p>Let’s do a couple of test requests to verify our authentication system is
+working.  Jetty allows to configure a security realm in a properties file, which
+is handy for local development, you can learn more <a href="https://wiki.eclipse.org/Jetty/Tutorial/Realms">here</a>. I have the
+following controller methods:</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="nd">@GetMapping</span><span class="o">(</span><span class="s">"/hello"</span><span class="o">)</span>
+<span class="kd">public</span> <span class="nc">String</span> <span class="nf">hello</span><span class="o">()</span> <span class="o">{</span>
+    <span class="k">return</span> <span class="s">"Hello"</span><span class="o">;</span>
+<span class="o">}</span>
+
+<span class="nd">@GetMapping</span><span class="o">(</span><span class="s">"/admin/hello"</span><span class="o">)</span>
+<span class="kd">public</span> <span class="nc">String</span> <span class="nf">helloAdmin</span><span class="o">()</span> <span class="o">{</span>
+    <span class="k">return</span> <span class="s">"Hello, Admin"</span><span class="o">;</span>
+<span class="o">}</span></code></pre></figure>
+
+<figure class="highlight"><pre><code class="language-bash" data-lang="bash"><span class="nv">$ </span>curl localhost:8080/app/hello/
+Hello
+
+<span class="nv">$ </span>curl localhost:8080/app/admin/hello/ | python <span class="nt">-m</span> json.tool
+<span class="o">{</span>
+    <span class="s2">"timestamp"</span>: <span class="s2">"2020-05-30T06:33:41.250+00:00"</span>,
+    <span class="s2">"status"</span>: 403,
+    <span class="s2">"error"</span>: <span class="s2">"Forbidden"</span>,
+    <span class="s2">"message"</span>: <span class="s2">""</span>,
+    <span class="s2">"path"</span>: <span class="s2">"/app/admin/hello"</span>
+<span class="o">}</span>
+
+<span class="nv">$ </span>curl <span class="nt">-c</span> - <span class="nt">-d</span> <span class="s2">"j_username=admin&amp;j_password=pass"</span> <span class="se">\</span>
+localhost:8080/app/j_security_check/
+<span class="c"># Output shortened for brevity</span>
+JSESSIONID node0gl4hg0zrigmg3v4ywapwo959.node0
+
+<span class="nv">$ </span>curl <span class="nt">-b</span> <span class="s2">"JSESSIONID=node0gl4hg0zrigmg3v4ywapwo959.node0"</span> <span class="se">\</span>
+localhost:8080/app/admin/hello/
+Hello, Admin
+<span class="c"># Subsequent requests may 403'd as the cookie value has changed</span></code></pre></figure>
+
+<p>Spring Security has its own JSON-formatted error messages, which are convenient
+if you’re working with JavaScript.</p>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>You can see just how little configuration Spring Security actually requires, but
+how much functionality you’re getting back! Plus, container authentication
+delegates the security to the application server, making it relatively easier to
+implement.</p>]]></content><author><name></name></author><summary type="html"><![CDATA[Spring Security is a framework full of solid features, most of them working nearly out of the box. Yet it’s still flexible enough to adapt to your particular requirements. In this article I’ll demonstrate how to integrate your Spring application authentication with a servlet container, such as WebSphere Application Server (WAS) or Tomcat, using Spring Security.]]></summary></entry><entry><title type="html">Setting a Correct Value in a select Element</title><link href="/setting-correct-value-select/" rel="alternate" type="text/html" title="Setting a Correct Value in a select Element" /><published>2019-10-20T00:00:00+00:00</published><updated>2019-10-20T00:00:00+00:00</updated><id>/setting-correct-value-select</id><content type="html" xml:base="/setting-correct-value-select/"><![CDATA[<script>
+  function choosePizza() {
+    let selectEl = document.getElementById('sel-1');
+    selectEl.value = 'pizza';
+  }
+
+  function choosePizzaFixed() {
+    let selectEl = document.getElementById('sel-2');
+    selectEl.value = 'pizza';
+
+    if (selectEl.selectedIndex === -1) {
+      selectEl.value = '';
+    }
+  }
+</script>
+
+<p>Setting the value of a <code class="language-plaintext highlighter-rouge">&lt;select&gt;</code> element it’s quite easy:</p>
+
+<figure class="highlight"><pre><code class="language-javascript" data-lang="javascript"><span class="kd">let</span> <span class="nx">selectEl</span> <span class="o">=</span> <span class="nb">document</span><span class="p">.</span><span class="nf">querySelector</span><span class="p">(</span><span class="dl">'</span><span class="s1">select#favorite-food</span><span class="dl">'</span><span class="p">);</span>
+<span class="nx">selectEl</span><span class="p">.</span><span class="nx">value</span> <span class="o">=</span> <span class="dl">'</span><span class="s1">pizza</span><span class="dl">'</span><span class="p">;</span></code></pre></figure>
+
+<p>Yet there’s a particular <abbr title="User experience">UX</abbr> detail that we might have overlooked:
+<strong>what if the value is not an existing option?</strong></p>
+
+<h1 id="the-problem">The Problem</h1>
+
+<p>Consider an instance where we have to set the value of a <code class="language-plaintext highlighter-rouge">&lt;select&gt;</code>
+programmatically. In my case, I had to preserve the user’s previously
+selected option right after updating the drop-down list with a new set
+of options.</p>
+
+<p>The problem is when the option is not listed (maybe it’s no longer
+available):</p>
+
+<div class="snippet">
+  <select id="sel-1">
+    <option value="" disabled="" selected="">What's your favorite food?</option>
+    <option value="chocolate">Chocolate</option>
+    <option value="ice-cream">Ice Cream</option>
+    <option value="fries">French Fries</option>
+  </select>
+
+  <button type="button" onclick="choosePizza()">Choose Pizza</button>
+</div>
+
+<p>The <code class="language-plaintext highlighter-rouge">&lt;select&gt;</code> is obviously left at an invalid state (its value is
+<code class="language-plaintext highlighter-rouge">""</code>), which means existing validation mechanisms still work as
+intended. However, we’re left with an empty select, there’s no
+placeholder text to guide the user.</p>
+
+<h1 id="the-solution">The Solution</h1>
+
+<p>Fortunately the <code class="language-plaintext highlighter-rouge">HTMLSelectElement</code> interface has a
+<a href="https://developer.mozilla.org/en-US/docs/Web/API/HTMLSelectElement/selectedIndex"><code class="language-plaintext highlighter-rouge">selectedIndex</code></a> property with a value of <code class="language-plaintext highlighter-rouge">-1</code> when no
+option is selected, which is exactly our case. We can leverage this
+property to perform a quick validation:</p>
+
+<div class="snippet">
+  <select id="sel-2">
+    <option value="" disabled="" selected="">What's your favorite food?</option>
+    <option value="chocolate">Chocolate</option>
+    <option value="ice-cream">Ice Cream</option>
+    <option value="fries">French Fries</option>
+  </select>
+
+  <button type="button" onclick="choosePizzaFixed()">Choose Pizza</button>
+</div>]]></content><author><name></name></author></entry><entry><title type="html">cherry-pick Considered Harmful</title><link href="/git-cherry-pick-harmful/" rel="alternate" type="text/html" title="cherry-pick Considered Harmful" /><published>2019-05-26T00:00:00+00:00</published><updated>2019-05-26T00:00:00+00:00</updated><id>/git-cherry-pick-harmful</id><content type="html" xml:base="/git-cherry-pick-harmful/"><![CDATA[<p>or: How I Learned to Stop cherry-picking and Love the merge</p>
+
+<p>Funny headlines aside, this post is gonna be a small rant as to why I find
+cherry-picking particularly annoying when working with <a href="https://nvie.com/posts/a-successful-git-branching-model/">Gitflow</a>.</p>
+
+<p>Gitflow is a good idea! I’m just not a huge fan of its <del>horrifying</del> humorous
+results in the log, as opposed to a much linear history:</p>
+
+<p><img src="https://i.imgur.com/Gh4ELWi.png" alt="Humorous Log" /></p>
+
+<p>Now, if you couple that with the bad habit of cherry-picking hotfix or bug fix
+commits, things start to get a lot messier. So why exactly is cherry-pick a bad
+idea? Because <strong>it further obfuscates your commit history</strong>.</p>
+
+<p>Consider the following example: I just committed a change on <code class="language-plaintext highlighter-rouge">hotfix/issue658</code>,
+and I need to apply it to both <code class="language-plaintext highlighter-rouge">master</code> and <code class="language-plaintext highlighter-rouge">dev</code>:</p>
+
+<p><img src="https://i.imgur.com/XqmuO1H.png" alt="Example 1" /></p>
+
+<p>Suppose I cherry-pick the resulting commit to both of those branches:</p>
+
+<p><img src="https://i.imgur.com/z16kVHc.png" alt="Example 2" /></p>
+
+<p>It might look OK at first glance, but watch what happens when I try to update
+<code class="language-plaintext highlighter-rouge">master</code> to a new version:</p>
+
+<p><img src="https://i.imgur.com/fQfvMGk.png" alt="Example 3" /></p>
+
+<p>We got duplicated commits! Git treats them as separate units because they each
+have different IDs (that’s what cherry-pick does, it creates a new commit each
+time), thus, my <code class="language-plaintext highlighter-rouge">hotfix</code> branch it’s not merged into any of my main branches.
+This commit history does not accurately reflect my original intent.</p>
+
+<p>Contrast that to what a correct merge strategy of the previous example would
+look like:</p>
+
+<p><img src="https://i.imgur.com/tf7Eozu.png" alt="Example 4" /></p>
+
+<p>I regard maintaining a reasonably sound commit history as important as writing
+good code, given how git can also be used as an auditing tool, believe me, it
+can save you a lot of trouble in the long run. Do yourself a favor an try to
+avoid cherry-picking as much as you can!</p>]]></content><author><name></name></author><summary type="html"><![CDATA[or: How I Learned to Stop cherry-picking and Love the merge]]></summary></entry><entry><title type="html">How to Install Oracle JDK in Ubuntu</title><link href="/how-to-install-oracle-jdk-ubuntu/" rel="alternate" type="text/html" title="How to Install Oracle JDK in Ubuntu" /><published>2018-03-18T00:00:00+00:00</published><updated>2018-03-18T00:00:00+00:00</updated><id>/how-to-install-oracle-jdk-ubuntu</id><content type="html" xml:base="/how-to-install-oracle-jdk-ubuntu/"><![CDATA[<p>I’ve been a Windows user almost all my life, mainly because I didn’t know
+better, and I wasn’t into computers either until later on. When I made the
+switch to Ubuntu, one of the pet peeves I had was installing Java. Sure,
+installing OpenJDK is very easy, since there’s already a package for it, but
+what if you need Oracle’s?</p>
+
+<p>There are a couple different ways of doing it, but so far this is my preferred
+one. It involves 3 steps:</p>
+
+<ol>
+  <li>Download the binaries directly from Oracle’s website</li>
+  <li>Place the binaries in the appropriate directory</li>
+  <li>Set <code class="language-plaintext highlighter-rouge">JAVA_HOME</code> and <code class="language-plaintext highlighter-rouge">PATH</code> accordingly</li>
+</ol>
+
+<p>Ok, let’s begin.</p>
+
+<h2 id="step-1-downloading-the-binaries">Step 1: Downloading the Binaries</h2>
+
+<p>Head over to Oracle’s website and download the JDK. Remember to <a href="https://itsfoss.com/checksum-tools-guide-linux/">verify the
+checksum</a>!</p>
+
+<h2 id="step-2-choosing-the-appropriate-directory">Step 2: Choosing the Appropriate Directory</h2>
+
+<p>What directory is appropriate for a system-wide installation of Java? According
+to <a href="http://www.pathname.com/fhs/pub/fhs-2.3.html#OPTADDONAPPLICATIONSOFTWAREPACKAGES">FHS</a> <code class="language-plaintext highlighter-rouge">opt/</code> fits just well. Go ahead and extract the contents of the
+downloaded archive there.</p>
+
+<h2 id="step-3-setting-the-environment-variables">Step 3: Setting the Environment Variables</h2>
+
+<p>Where do we declare <code class="language-plaintext highlighter-rouge">JAVA_HOME</code> and modify our <code class="language-plaintext highlighter-rouge">PATH</code>? It can’t be in
+<code class="language-plaintext highlighter-rouge">~/.bashrc</code> or <code class="language-plaintext highlighter-rouge">~/.profile</code> as it’s single user only and limited to a CLI shell.
+What about a graphical shell?</p>
+
+<p>I’ve found that the best location to set up environment variables is in
+<code class="language-plaintext highlighter-rouge">/etc/profile.d</code>. According to the <a href="https://help.ubuntu.com/community/EnvironmentVariables#A.2Fetc.2Fprofile.d.2F.2A.sh">Ubuntu Wiki</a>:</p>
+
+<blockquote>
+  <p>Files with the .sh extension in the /etc/profile.d directory get executed
+whenever a bash login shell is entered (e.g. when logging in from the console
+or over ssh), as well as by the DisplayManager when the desktop session loads.</p>
+</blockquote>
+
+<p>Which means the variables will be set in both CLI shells and graphical
+environments, which is exactly what we want!</p>
+
+<p>Here’s what an <code class="language-plaintext highlighter-rouge">/etc/profile.d/java.sh</code> example might look like:</p>
+
+<figure class="highlight"><pre><code class="language-bash" data-lang="bash"><span class="nb">export </span><span class="nv">JAVA_HOME</span><span class="o">=</span>/opt/jdk1.8.0_161
+<span class="nv">PATH</span><span class="o">=</span><span class="nv">$JAVA_HOME</span>/bin:<span class="nv">$PATH</span></code></pre></figure>
+
+<p>That’s it! Log out and back in to apply the changes. As usual, run <code class="language-plaintext highlighter-rouge">java
+-version</code> to test if Java was installed correctly:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$ java -version
+java version "1.8.0_161"
+Java(TM) SE Runtime Environment (build 1.8.0_161-b12)
+Java HotSpot(TM) 64-Bit Server VM (build 25.161-b12, mixed mode)
+</code></pre></div></div>
+
+<p>There you go, happy programming!</p>]]></content><author><name></name></author><summary type="html"><![CDATA[I’ve been a Windows user almost all my life, mainly because I didn’t know better, and I wasn’t into computers either until later on. When I made the switch to Ubuntu, one of the pet peeves I had was installing Java. Sure, installing OpenJDK is very easy, since there’s already a package for it, but what if you need Oracle’s?]]></summary></entry><entry><title type="html">Handling dotfiles with YADM</title><link href="/handling-dotfiles-with-yadm/" rel="alternate" type="text/html" title="Handling dotfiles with YADM" /><published>2017-10-22T00:00:00+00:00</published><updated>2017-10-22T00:00:00+00:00</updated><id>/handling-dotfiles-with-yadm</id><content type="html" xml:base="/handling-dotfiles-with-yadm/"><![CDATA[<p>Nothing makes me feel more at <code class="language-plaintext highlighter-rouge">$HOME</code> than seeing my dotfiles in place.</p>
+
+<p>Most people keep them in sync via a git repository, usually GitHub, which is
+great because it encourages sharing. I like to look through those repositories
+to seek inspiration (I’m also just curious).</p>
+
+<p>I used to keep them in sync using <a href="https://syncthing.net/">syncthing</a>, but my
+current setup was limited to LAN only. I needed something that could work over
+the internet.</p>
+
+<p>I must admit I was a bit skeptic about using a git repository because it meant
+creating a script to symlink the files, figuring out a way to handle different
+environments like macOS and Ubuntu, and manually transfer SSH keys.</p>
+
+<p>But then I discovered <a href="https://thelocehiliosan.github.io/yadm/">YADM: Yet Another Dotfiles
+Manager</a>, and I was blown away. It
+featured exactly everything I needed in a dotfiles manager:</p>
+
+<ul>
+  <li>Git under the hood</li>
+  <li>No symlinking required, as your <code class="language-plaintext highlighter-rouge">$HOME</code> is the working directory</li>
+  <li>File encryption (via GnuPG)</li>
+  <li>Alternate files based on the OS</li>
+</ul>
+
+<p>With YADM, you only add the files you need synced, and because it’s a glorified
+git wrapper, all the git commands stay the same.</p>
+
+<p>Perhaps my favorite feature is encryption, and it’s super easy to use. Simply
+create a <code class="language-plaintext highlighter-rouge">~/.yadm/encrypt</code> file, and write some glob patterns matching the files
+you want encrypted so they’re not stored as plain text. For instance:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>.config/secrets
+.ssh/*
+!.ssh/authorized_keys
+!.ssh/known_hosts*
+</code></pre></div></div>
+
+<p>Then, encrypt the files with: <code class="language-plaintext highlighter-rouge">yadm encrypt</code>. This will create a bundle called
+<code class="language-plaintext highlighter-rouge">~/.yadm/files.gpg</code>, which you can now add to the repo. If you’d like to decrypt
+the files, <code class="language-plaintext highlighter-rouge">yadm decrypt</code> does the job.</p>
+
+<p>I highly recommend this tool, I think it’s an elegant way to handle dotfiles.</p>]]></content><author><name></name></author><summary type="html"><![CDATA[Nothing makes me feel more at $HOME than seeing my dotfiles in place.]]></summary></entry><entry><title type="html">Dockerfile: CMD vs. ENTRYPOINT</title><link href="/docker-cmd-vs-entrypoint/" rel="alternate" type="text/html" title="Dockerfile: CMD vs. ENTRYPOINT" /><published>2017-08-22T00:00:00+00:00</published><updated>2017-08-22T00:00:00+00:00</updated><id>/docker-cmd-vs-entrypoint</id><content type="html" xml:base="/docker-cmd-vs-entrypoint/"><![CDATA[<p>Docker provides a couple of instructions to specify what a container
+does when you want to <code class="language-plaintext highlighter-rouge">docker run</code> it: <code class="language-plaintext highlighter-rouge">CMD</code> and <code class="language-plaintext highlighter-rouge">ENTRYPOINT</code>.</p>
+
+<p>These two provide a somewhat similar functionality but are actually
+quite different fundamentally. According to the <a href="https://docs.docker.com/engine/reference/builder/">Dockerfile
+reference</a>, <code class="language-plaintext highlighter-rouge">CMD</code>’s entire purpose is to provide <strong>defaults</strong> for an
+executing container, while <code class="language-plaintext highlighter-rouge">ENTRYPOINT</code>’s is being concerned with the
+<strong>configuration</strong> of said executing container.</p>
+
+<p>That’s their main purpose. However, depending on the combination of this
+two instructions, we can achieve different use cases.</p>
+
+<h2 id="cmd">CMD</h2>
+
+<p>Let’s take a look at <a href="https://github.com/debuerreotype/docker-debian-artifacts/blob/42bec5bc2f5a76ceeb125bc4e66d6f70a95e933f/stretch/slim/Dockerfile">Debian Stretch Slim’s Dockerfile</a>:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>FROM scratch
+ADD rootfs.tar.xz /
+CMD ["bash"]
+</code></pre></div></div>
+
+<p>Notice how there’s no <code class="language-plaintext highlighter-rouge">ENTRYPOINT</code>. When only <code class="language-plaintext highlighter-rouge">CMD</code> is present, the
+default behaviour will be to execute whatever is specified by <code class="language-plaintext highlighter-rouge">CMD</code>,
+bash in this case.</p>
+
+<p>So, when I <code class="language-plaintext highlighter-rouge">docker run debian:stretch-slim</code>, the container will run bash
+and exit.</p>
+
+<p>Wouldn’t <code class="language-plaintext highlighter-rouge">ENTRYPOINT</code> achieve the same thing? Why do we need <code class="language-plaintext highlighter-rouge">CMD</code> for
+then? Well, <code class="language-plaintext highlighter-rouge">CMD</code> has a special property, something I like to call <em>soft
+exec</em>, which is basically the ability to override the command. Take
+a look:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$ docker run debian:stretch-slim echo Hello!
+Hello!
+</code></pre></div></div>
+
+<p>The container executed <code class="language-plaintext highlighter-rouge">echo Hello!</code> instead of the default command.</p>
+
+<h2 id="entrypoint">ENTRYPOINT</h2>
+
+<p>Let’s contrast the previous behaviour with an <code class="language-plaintext highlighter-rouge">ENTRYPOINT</code> instruction.
+Using the following Dockerfile:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>FROM debian:stretch-slim
+ENTRYPOINT ["echo" "Hello,"]
+</code></pre></div></div>
+
+<p>I’m gonna build a <code class="language-plaintext highlighter-rouge">entrypoint-test</code> image and run it:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$ docker run entrypoint-test
+Hello,
+</code></pre></div></div>
+
+<p>Okay, so far things look samey. But watch this!</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$ docker run entrypoint-test World!
+Hello, World!
+</code></pre></div></div>
+
+<p>I couldn’t override the command this time! Instead, the container used
+it as <code class="language-plaintext highlighter-rouge">echo</code>’s input. This is what I call the <em>hard exec</em>: <code class="language-plaintext highlighter-rouge">ENTRYPOINT</code>
+will always be executed, regardless.</p>
+
+<h2 id="entrypoint--cmd">ENTRYPOINT + CMD</h2>
+
+<p>As I mentioned, <code class="language-plaintext highlighter-rouge">CMD</code> provides default arguments to <code class="language-plaintext highlighter-rouge">ENTRYPOINT</code>.
+Consider the following Dockerfile:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>FROM debian:stretch-slim
+CMD ["World!"]
+ENTRYPOINT ["echo", "Hello,"]
+</code></pre></div></div>
+
+<p>Having built it as <code class="language-plaintext highlighter-rouge">entrypoint-cmd-test</code>, let’s run it:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$ docker run entrypoint-cmd-test
+Hello, World!
+</code></pre></div></div>
+
+<p><code class="language-plaintext highlighter-rouge">CMD</code> provided the default <em>World!</em> argument to echo. What if we pass an
+argument of our own?</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$ docker run entrypoint-cmd-test Daniel!
+Hello, Daniel!
+</code></pre></div></div>
+
+<p>We have successfully overridden the default parameters!</p>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>Both <code class="language-plaintext highlighter-rouge">CMD</code> &amp; <code class="language-plaintext highlighter-rouge">ENTRYPOINT</code> bring their own stuff to the table, but at the
+end of the day, like most things, it’s up to you to decide which use
+case fits your needs! I hope this has helped clear up the confusion!</p>]]></content><author><name></name></author><summary type="html"><![CDATA[Docker provides a couple of instructions to specify what a container does when you want to docker run it: CMD and ENTRYPOINT.]]></summary></entry></feed>

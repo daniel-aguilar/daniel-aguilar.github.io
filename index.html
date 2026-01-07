@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1"><!-- Begin Jekyll SEO tag v2.8.0 -->
+<title>Daniel’s Blog | There will be code</title>
+<meta name="generator" content="Jekyll v4.4.1" />
+<meta property="og:title" content="Daniel’s Blog" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="There will be code" />
+<meta property="og:description" content="There will be code" />
+<meta property="og:site_name" content="Daniel’s Blog" />
+<meta property="og:type" content="website" />
+<meta name="twitter:card" content="summary" />
+<meta property="twitter:title" content="Daniel’s Blog" />
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"WebSite","description":"There will be code","headline":"Daniel’s Blog","name":"Daniel’s Blog","url":"/"}</script>
+<!-- End Jekyll SEO tag -->
+<link rel="stylesheet" href="/assets/main.css"><link type="application/atom+xml" rel="alternate" href="/feed.xml" title="Daniel&apos;s Blog" /></head>
+<body><header class="site-header" role="banner">
+
+  <div class="wrapper"><a class="site-title" rel="author" href="/">Daniel&#39;s Blog</a><nav class="site-nav">
+        <input type="checkbox" id="nav-trigger" class="nav-trigger" />
+        <label for="nav-trigger">
+          <span class="menu-icon">
+            <svg viewBox="0 0 18 15" width="18px" height="15px">
+              <path d="M18,1.484c0,0.82-0.665,1.484-1.484,1.484H1.484C0.665,2.969,0,2.304,0,1.484l0,0C0,0.665,0.665,0,1.484,0 h15.032C17.335,0,18,0.665,18,1.484L18,1.484z M18,7.516C18,8.335,17.335,9,16.516,9H1.484C0.665,9,0,8.335,0,7.516l0,0 c0-0.82,0.665-1.484,1.484-1.484h15.032C17.335,6.031,18,6.696,18,7.516L18,7.516z M18,13.516C18,14.335,17.335,15,16.516,15H1.484 C0.665,15,0,14.335,0,13.516l0,0c0-0.82,0.665-1.483,1.484-1.483h15.032C17.335,12.031,18,12.695,18,13.516L18,13.516z"/>
+            </svg>
+          </span>
+        </label>
+
+        <div class="trigger"><a class="page-link" href="/about/">About</a></div>
+      </nav></div>
+</header>
+<main class="page-content" aria-label="Content">
+      <div class="wrapper">
+        <div class="home">
+<h2 class="post-list-heading">Posts</h2>
+    <ul class="post-list"><li><span class="post-meta">Jul 15, 2024</span>
+        <h3>
+          <a class="post-link" href="/jpql-harmful/">
+            JPQL Considered Harmful
+          </a>
+        </h3><p>In a Java project, it’s not unusual to find database queries using the
+Jakarta Persistence Query Language (JPQL), a fairly easy to use
+language with a syntax akin to SQL. While this is a perfectly
+acceptable way to declare small queries, it can quickly spiral out of
+control for more advanced requirements. The Criteria API (and its
+Spring Data derivative Specifications) allow for a modular,
+programmatic, and type safe declaration of queries. It’s so good,
+you’ll probably never want to go back to writing string queries again!</p>
+</li><li><span class="post-meta">Mar 3, 2024</span>
+        <h3>
+          <a class="post-link" href="/effective-use-identity-columns/">
+            Effective Use of SQL Identity Columns (Oracle &amp; Postgres)
+          </a>
+        </h3><p>The concept of SQL tables with an auto incremental column for its
+primary key it’s obviously not new, as it is easily implemented using
+sequences. Now, on December of 2003 the <a href="https://www.iso.org/standard/34132.html">SQL:2003</a> standard
+introduced the identity column type, along with the syntax <code class="language-plaintext highlighter-rouge">GENERATED
+AS IDENTITY</code>, which is currently supported by virtually all RDBMS
+providers. Let’s take a quick look at how we can declare primary key
+columns with auto generated identifiers, without relying on
+vendor-specific syntax!</p>
+
+</li><li><span class="post-meta">Dec 20, 2021</span>
+        <h3>
+          <a class="post-link" href="/oracle-flashback/">
+            Going back in time with Oracle Flashback
+          </a>
+        </h3><p>You ever wished you could take a snapshot of your current Oracle
+development database? One that you could easily go back to in case of
+trouble. What if you started working on a feature, and accidentally
+mess up the business logic integrity in some way? Imagine the
+countless hours just trying to revert the damage done only to finally
+give up and end up recreating the database from scratch. You ever
+wished this could be done in a straightforward way (less than 3
+commands)? Me too!</p>
+</li><li><span class="post-meta">Jul 6, 2020</span>
+        <h3>
+          <a class="post-link" href="/introduction-bsd-sockets/">
+            Introduction to BSD Sockets
+          </a>
+        </h3><p>The operating system truly makes developers’ jobs much more easier: we don’t
+have to worry about the boring details, and can focus on what our programs do
+instead. Keeping with the same philosophy of abstracting the details, and thanks
+to the people at UC Berkeley, communicating over a network isn’t that much
+different as writing some data to a file.</p>
+</li><li><span class="post-meta">May 30, 2020</span>
+        <h3>
+          <a class="post-link" href="/container-auth-spring-security/">
+            Container Authentication with Spring Security
+          </a>
+        </h3><p>Spring Security is a framework full of solid features, most of them working
+nearly out of the box. Yet it’s still flexible enough to adapt to your
+particular requirements. In this article I’ll demonstrate how to integrate your
+Spring application authentication with a servlet container, such as WebSphere
+Application Server (WAS) or Tomcat, using Spring Security.</p>
+</li><li><span class="post-meta">Oct 20, 2019</span>
+        <h3>
+          <a class="post-link" href="/setting-correct-value-select/">
+            Setting a Correct Value in a select Element
+          </a>
+        </h3></li><li><span class="post-meta">May 26, 2019</span>
+        <h3>
+          <a class="post-link" href="/git-cherry-pick-harmful/">
+            cherry-pick Considered Harmful
+          </a>
+        </h3><p>or: How I Learned to Stop cherry-picking and Love the merge</p>
+</li><li><span class="post-meta">Mar 18, 2018</span>
+        <h3>
+          <a class="post-link" href="/how-to-install-oracle-jdk-ubuntu/">
+            How to Install Oracle JDK in Ubuntu
+          </a>
+        </h3><p>I’ve been a Windows user almost all my life, mainly because I didn’t know
+better, and I wasn’t into computers either until later on. When I made the
+switch to Ubuntu, one of the pet peeves I had was installing Java. Sure,
+installing OpenJDK is very easy, since there’s already a package for it, but
+what if you need Oracle’s?</p>
+</li><li><span class="post-meta">Oct 22, 2017</span>
+        <h3>
+          <a class="post-link" href="/handling-dotfiles-with-yadm/">
+            Handling dotfiles with YADM
+          </a>
+        </h3><p>Nothing makes me feel more at <code class="language-plaintext highlighter-rouge">$HOME</code> than seeing my dotfiles in place.</p>
+</li><li><span class="post-meta">Aug 22, 2017</span>
+        <h3>
+          <a class="post-link" href="/using-vimrc-files-per-directory/">
+            Using vimrc Files per Directory
+          </a>
+        </h3><p>How many times have you wished you could have a different vimrc
+configuration per directory? I know I have, many times! Specially when
+you work on different projects which might require different settings.
+For instance, I like to enable spell checking when working on my school
+notes, but I don’t wanna <code class="language-plaintext highlighter-rouge">set spell spelllang=es,en</code> every time I open
+a file for editing.</p>
+</li><li><span class="post-meta">Aug 22, 2017</span>
+        <h3>
+          <a class="post-link" href="/docker-cmd-vs-entrypoint/">
+            Dockerfile: CMD vs. ENTRYPOINT
+          </a>
+        </h3><p>Docker provides a couple of instructions to specify what a container
+does when you want to <code class="language-plaintext highlighter-rouge">docker run</code> it: <code class="language-plaintext highlighter-rouge">CMD</code> and <code class="language-plaintext highlighter-rouge">ENTRYPOINT</code>.</p>
+</li><li><span class="post-meta">Jun 11, 2017</span>
+        <h3>
+          <a class="post-link" href="/squashing-old-references-with-django-migrations/">
+            Squashing Old References with Django Migrations
+          </a>
+        </h3><p>The other day I found a small typo in a function I was referencing in
+the <code class="language-plaintext highlighter-rouge">upload_to</code> field option in one of my models. I fixed the nasty
+typo, only to discover I had broken the migrations, as it was also being
+referenced in one of them.</p>
+</li><li><span class="post-meta">Jan 29, 2017</span>
+        <h3>
+          <a class="post-link" href="/virtualbox-compacting-disks/">
+            VirtualBox: Compacting Disks
+          </a>
+        </h3><p>VirtualBox’s dynamically allocated disks are great because they start
+small, and only stretch when they need to. Thing is, they don’t shrink
+back <em>automagically</em> once the space is freed, they require a little
+push. This is what VirtualBox calls <em>compacting</em>, and it’s a great way
+to trim your machines so they only use as much space as they actually
+need.</p>
+</li><li><span class="post-meta">Jan 15, 2017</span>
+        <h3>
+          <a class="post-link" href="/internationalization-i18n-with-yii-2/">
+            Internationalization (i18n) with Yii 2
+          </a>
+        </h3><p>Yii 2 provides a very intuitive way to translate your web application,
+and it makes it easy for both the developers and the translators, by
+keeping the work that has to be done by both parties nicely separated.</p>
+</li><li><span class="post-meta">Jan 14, 2017</span>
+        <h3>
+          <a class="post-link" href="/resuming-the-journey/">
+            Resuming the Journey
+          </a>
+        </h3><p>After an extended hiatus, I’ve decided I’ll pick my blog where I left
+off.</p>
+</li></ul>
+
+    <p class="rss-subscribe">subscribe <a href="/feed.xml">via RSS</a></p></div>
+
+      </div>
+    </main><footer class="site-footer h-card">
+  <data class="u-url" href="/"></data>
+
+  <div class="wrapper">
+
+    <h2 class="footer-heading">Daniel&#39;s Blog</h2>
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <p>There will be code</p>
+      </div>
+
+      <div class="footer-col footer-col-2"><ul class="social-media-list"><li><a href="https://github.com/daniel-aguilar"><svg class="svg-icon"><use xlink:href="/assets/minima-social-icons.svg#github"></use></svg> <span class="username">daniel-aguilar</span></a></li><li><a href="https://www.linkedin.com/in/dan-aguilar"><svg class="svg-icon"><use xlink:href="/assets/minima-social-icons.svg#linkedin"></use></svg> <span class="username">dan-aguilar</span></a></li><li><a href="/feed.xml"><svg class="svg-icon"><use xlink:href="/assets/minima-social-icons.svg#rss"></use></svg> <span>RSS</span></a></li></ul>
+</div>
+
+      <div class="footer-col footer-col-3">
+        <p>
+          This work is licensed under <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a><img src="https://mirrors.creativecommons.org/presskit/icons/cc.svg" alt="" style="max-width: 1em;max-height:1em;margin-left: .2em;"><img src="https://mirrors.creativecommons.org/presskit/icons/by.svg" alt="" style="max-width: 1em;max-height:1em;margin-left: .2em;">
+        </p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+</body>
+
+</html>

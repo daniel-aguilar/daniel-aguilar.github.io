@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1"><!-- Begin Jekyll SEO tag v2.8.0 -->
+<title>JPQL Considered Harmful | Daniel’s Blog</title>
+<meta name="generator" content="Jekyll v4.4.1" />
+<meta property="og:title" content="JPQL Considered Harmful" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="In a Java project, it’s not unusual to find database queries using the Jakarta Persistence Query Language (JPQL), a fairly easy to use language with a syntax akin to SQL. While this is a perfectly acceptable way to declare small queries, it can quickly spiral out of control for more advanced requirements. The Criteria API (and its Spring Data derivative Specifications) allow for a modular, programmatic, and type safe declaration of queries. It’s so good, you’ll probably never want to go back to writing string queries again!" />
+<meta property="og:description" content="In a Java project, it’s not unusual to find database queries using the Jakarta Persistence Query Language (JPQL), a fairly easy to use language with a syntax akin to SQL. While this is a perfectly acceptable way to declare small queries, it can quickly spiral out of control for more advanced requirements. The Criteria API (and its Spring Data derivative Specifications) allow for a modular, programmatic, and type safe declaration of queries. It’s so good, you’ll probably never want to go back to writing string queries again!" />
+<meta property="og:site_name" content="Daniel’s Blog" />
+<meta property="og:type" content="article" />
+<meta property="article:published_time" content="2024-07-15T00:00:00+00:00" />
+<meta name="twitter:card" content="summary" />
+<meta property="twitter:title" content="JPQL Considered Harmful" />
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BlogPosting","dateModified":"2024-07-15T00:00:00+00:00","datePublished":"2024-07-15T00:00:00+00:00","description":"In a Java project, it’s not unusual to find database queries using the Jakarta Persistence Query Language (JPQL), a fairly easy to use language with a syntax akin to SQL. While this is a perfectly acceptable way to declare small queries, it can quickly spiral out of control for more advanced requirements. The Criteria API (and its Spring Data derivative Specifications) allow for a modular, programmatic, and type safe declaration of queries. It’s so good, you’ll probably never want to go back to writing string queries again!","headline":"JPQL Considered Harmful","mainEntityOfPage":{"@type":"WebPage","@id":"/jpql-harmful/"},"url":"/jpql-harmful/"}</script>
+<!-- End Jekyll SEO tag -->
+<link rel="stylesheet" href="/assets/main.css"><link type="application/atom+xml" rel="alternate" href="/feed.xml" title="Daniel&apos;s Blog" /></head>
+<body><header class="site-header" role="banner">
+
+  <div class="wrapper"><a class="site-title" rel="author" href="/">Daniel&#39;s Blog</a><nav class="site-nav">
+        <input type="checkbox" id="nav-trigger" class="nav-trigger" />
+        <label for="nav-trigger">
+          <span class="menu-icon">
+            <svg viewBox="0 0 18 15" width="18px" height="15px">
+              <path d="M18,1.484c0,0.82-0.665,1.484-1.484,1.484H1.484C0.665,2.969,0,2.304,0,1.484l0,0C0,0.665,0.665,0,1.484,0 h15.032C17.335,0,18,0.665,18,1.484L18,1.484z M18,7.516C18,8.335,17.335,9,16.516,9H1.484C0.665,9,0,8.335,0,7.516l0,0 c0-0.82,0.665-1.484,1.484-1.484h15.032C17.335,6.031,18,6.696,18,7.516L18,7.516z M18,13.516C18,14.335,17.335,15,16.516,15H1.484 C0.665,15,0,14.335,0,13.516l0,0c0-0.82,0.665-1.483,1.484-1.483h15.032C17.335,12.031,18,12.695,18,13.516L18,13.516z"/>
+            </svg>
+          </span>
+        </label>
+
+        <div class="trigger"><a class="page-link" href="/about/">About</a></div>
+      </nav></div>
+</header>
+<main class="page-content" aria-label="Content">
+      <div class="wrapper">
+        <article class="post h-entry" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+    <h1 class="post-title p-name" itemprop="name headline">JPQL Considered Harmful</h1>
+    <p class="post-meta">
+      <time class="dt-published" datetime="2024-07-15T00:00:00+00:00" itemprop="datePublished">Jul 15, 2024
+      </time></p>
+  </header>
+
+  <div class="post-content e-content" itemprop="articleBody">
+    <p>In a Java project, it’s not unusual to find database queries using the
+Jakarta Persistence Query Language (JPQL), a fairly easy to use
+language with a syntax akin to SQL. While this is a perfectly
+acceptable way to declare small queries, it can quickly spiral out of
+control for more advanced requirements. The Criteria API (and its
+Spring Data derivative Specifications) allow for a modular,
+programmatic, and type safe declaration of queries. It’s so good,
+you’ll probably never want to go back to writing string queries again!</p>
+
+<p>The data access layer is such an ubiquitous component of our
+applications, one could dare to say it’s the essence of it—business
+logic is derived from this data after all. As a programmer you’ll
+spend a great deal of time in this layer, which means you’ve probably
+run into the following piece of code:</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="c1">// Long and unformatted query...</span>
+<span class="nc">String</span> <span class="n">jpql</span> <span class="o">=</span> <span class="s">"FROM Store s JOIN s.guitars g WHERE g.price &gt; "</span> <span class="o">+</span>
+        <span class="s">"(SELECT max(g2.price) FROM Guitar g2 JOIN g2.store s2 WHERE s2 = :folsomStore) "</span><span class="o">;</span>
+<span class="k">if</span> <span class="o">(</span><span class="n">someCondition</span><span class="o">)</span> <span class="o">{</span>
+    <span class="c1">// ...split across different conditions</span>
+    <span class="n">jpql</span> <span class="o">+=</span> <span class="s">"AND g.fretboardWood NOT IN (:maple, :ebony) "</span><span class="o">;</span>
+<span class="o">}</span>
+<span class="n">jpql</span> <span class="o">+=</span> <span class="s">"ORDER BY s.location ASC"</span><span class="o">;</span>
+
+<span class="nc">Query</span> <span class="n">query</span> <span class="o">=</span> <span class="n">entityManager</span><span class="o">.</span><span class="na">createQuery</span><span class="o">(</span><span class="n">jpql</span><span class="o">);</span>
+<span class="c1">// ... set query parameters</span>
+<span class="k">return</span> <span class="n">query</span><span class="o">.</span><span class="na">getResultList</span><span class="o">();</span> <span class="c1">// No type safety</span></code></pre></figure>
+
+<p>In such a small example you can already spot a few code smells, not to
+mention that string mangling can become extremely gruesome in most
+cases. Given the amount of time we spent maintaining modules with this
+particular pattern found in every method, surely there must be a
+better way to build complex queries without developer experience
+trade-offs.</p>
+
+<h2 id="criteria-api">Criteria API</h2>
+
+<p><a href="https://javaee.github.io/tutorial/persistence-criteria.html">Criteria API</a> was introduced with the release of <a href="https://download.oracle.com/otn-pub/jcp/persistence-2.0-fr-eval-oth-JSpec/persistence-2_0-final-spec.pdf">JSR 317: Java
+Persistence API, Version 2.0</a> in 2009. Criteria queries are written
+in plain Java, are type safe, and just like its JPQL (formerly Java
+Persistence Query Language) counterpart, they work regardless of the
+underlying data store.</p>
+
+<p>Switching your plain string queries to Criteria API is, in my opinion,
+the single most significant improvement you can make to your
+application’s data layer:</p>
+
+<ul>
+  <li>Drastically enhance the developer experience by unlocking powerful
+programmatic control flow techniques, without sacrificing
+readability. Say goodbye to complicated string mangled spaghetti
+code.</li>
+  <li>Reduce potentially hundreds of lines of duplicate queries with
+little to no differences by encouraging modularity and reuse. Client
+requests a change be reflected in multiple reports? Modifying a
+single query is often enough.</li>
+  <li>Improve performance by skipping unnecessary <code class="language-plaintext highlighter-rouge">JOIN</code> clauses you might
+have to support a single (and rarely materialized) condition in
+your string appending line of <code class="language-plaintext highlighter-rouge">WHERE</code>s.</li>
+</ul>
+
+<p><a href="https://docs.spring.io/spring-data/jpa/docs/2.7.18/reference/html/">Spring Data JPA</a> abstracts this API even further and introduces
+the concept of <a href="https://docs.spring.io/spring-data/jpa/docs/2.7.18/reference/html/#specifications">Specifications</a> as small building blocks which can
+be combined and used with <code class="language-plaintext highlighter-rouge">JpaRepository</code> without the need to declare
+a query (method) for every needed combination.</p>
+
+<h2 id="guitar-inventory-example">Guitar Inventory Example</h2>
+
+<p>I’m not joking when I say that after using Criteria API/Specifications
+you’ll never want to write a single string query again. And to make
+that case, I’ve created a sample project using the three styles of
+query definitions. I’m using Spring Boot 2.7 which, while way past its
+open source support window, still runs Java 8 code. This choice is
+deliberate so this article can reach a much wider audience.</p>
+
+<p>If you’re not using Spring, but do have access to the
+<a href="https://javaee.github.io/javaee-spec/javadocs/javax/persistence/EntityManager.html">EntityManager</a>, then this article still applies to you. So I
+encourage you to download the <a href="https://github.com/daniel-aguilar/daniel-aguilar.github.io/tree/master/samples/jpa-criteria">source code</a> and follow along with
+me!</p>
+
+<p>The project consists of a guitar inventory management system for
+multiple brick-and-mortar store locations:</p>
+
+<p><img src="https://i.imgur.com/KXb2FDZ.png" alt="ER Diagram" /></p>
+
+<h3 id="business-logic">Business Logic</h3>
+
+<p>Suppose the client’s point of sale needs to fetch available guitars
+for sale based on the following rules:</p>
+
+<ol>
+  <li>By default, only the current store (Roseville) inventory is shown,
+but one can toggle the full catalog</li>
+  <li>Due to a shortage, no maple fretboards are available for sale</li>
+  <li>Dave is a new hire and only sells guitars priced at $100 or less</li>
+</ol>
+
+<p>We start by creating a <code class="language-plaintext highlighter-rouge">getInventory</code> method with a signature like so:</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="nc">List</span><span class="o">&lt;</span><span class="nc">Guitar</span><span class="o">&gt;</span> <span class="nf">getInventory</span><span class="o">(</span><span class="kt">boolean</span> <span class="n">showAllStores</span><span class="o">,</span> <span class="kt">int</span> <span class="n">salesPersonId</span><span class="o">);</span></code></pre></figure>
+
+<h3 id="using-jpql-string-queries">Using JPQL (String queries)</h3>
+
+<p>Because we wouldn’t want to define a new string query for <em>every</em>
+single escenario (which is subject to change), the usual approach is
+appending conditionals to the <code class="language-plaintext highlighter-rouge">WHERE</code> clause in the JPQL string:</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="c1">// CustomizedGuitarRepositoryImpl.java stub</span>
+<span class="nc">List</span><span class="o">&lt;</span><span class="nc">Guitar</span><span class="o">&gt;</span> <span class="nf">getInventoryUsingJPQL</span><span class="o">(</span><span class="kt">boolean</span> <span class="n">showAllStores</span><span class="o">,</span> <span class="kt">int</span> <span class="n">salesPersonId</span><span class="o">)</span> <span class="o">{</span>
+    <span class="kt">boolean</span> <span class="n">isNewHire</span> <span class="o">=</span> <span class="n">salesPersonId</span> <span class="o">==</span> <span class="no">DAVE</span><span class="o">;</span>
+
+     <span class="cm">/*
+      * I manually format the string here, but I've witnessed incredibly unreadable
+      * one-liners. Plus there's a lack of tooling to standardize this.
+      */</span>
+     <span class="nc">String</span> <span class="n">jpql</span> <span class="o">=</span>
+             <span class="s">"SELECT g "</span> <span class="o">+</span> <span class="c1">// We have to deliberately add spacing</span>
+             <span class="s">"FROM Guitar g "</span> <span class="o">+</span>
+             <span class="s">"JOIN g.fretboardWood f "</span> <span class="o">+</span>
+             <span class="s">"JOIN g.store s "</span> <span class="o">+</span> <span class="c1">// Premature JOIN clause (what if showAllStores is true?)</span>
+             <span class="s">"WHERE "</span><span class="o">;</span>
+
+    <span class="n">jpql</span> <span class="o">+=</span> <span class="s">"f.id != :maple AND "</span><span class="o">;</span>
+
+    <span class="k">if</span> <span class="o">(!</span><span class="n">showAllStores</span><span class="o">)</span> <span class="o">{</span>
+        <span class="n">jpql</span> <span class="o">+=</span> <span class="s">"s.id = :roseville AND "</span><span class="o">;</span>
+    <span class="o">}</span>
+
+    <span class="k">if</span> <span class="o">(</span><span class="n">isNewHire</span><span class="o">)</span> <span class="o">{</span>
+        <span class="n">jpql</span> <span class="o">+=</span> <span class="s">"g.price &lt;= :priceCap AND "</span><span class="o">;</span>
+    <span class="o">}</span>
+
+    <span class="n">jpql</span> <span class="o">+=</span> <span class="s">"1 = 1"</span><span class="o">;</span> <span class="c1">// Make sure the query does not end with AND</span>
+    
+    <span class="nc">Query</span> <span class="n">query</span> <span class="o">=</span> <span class="n">entityManager</span><span class="o">.</span><span class="na">createQuery</span><span class="o">(</span><span class="n">jpql</span><span class="o">);</span>
+    <span class="c1">// ... set query parameters</span>
+    <span class="k">return</span> <span class="n">query</span><span class="o">.</span><span class="na">getResultList</span><span class="o">();</span> <span class="c1">// No type safety</span>
+<span class="o">}</span></code></pre></figure>
+
+<p>While the current business logic is not very complex, there’s no doubt
+that the previous code is unfit for more elaborate requirements. The
+string mangling will quickly become unmaintainable and the lack of
+modularity makes it impossible to reuse the conditions in a different
+query or even expand upon it (i.e. additional filtering). On that last
+note, we might be tempted to filter the query results in a different
+layer of our application, like the front-end, but this means losing
+the performance of the query optimizer of our database to custom
+filtering code of a data structure (meaning we now have to maintain
+code in two different locations).</p>
+
+<h3 id="using-criteria-api">Using Criteria API</h3>
+
+<p>With Criteria API, each conditional is represented with a
+<a href="https://javaee.github.io/javaee-spec/javadocs/javax/persistence/criteria/Predicate.html">Predicate</a>. These can be manipulated programmatically, expanded
+upon, and reused across our codebase:</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="c1">// CustomizedGuitarRepositoryImpl.java stub</span>
+<span class="nc">List</span><span class="o">&lt;</span><span class="nc">Guitar</span><span class="o">&gt;</span> <span class="nf">getInventoryUsingCriteria</span><span class="o">(</span><span class="kt">boolean</span> <span class="n">showAllStores</span><span class="o">,</span> <span class="kt">int</span> <span class="n">salesPersonId</span><span class="o">)</span> <span class="o">{</span>
+    <span class="nc">CriteriaBuilder</span> <span class="n">cb</span> <span class="o">=</span> <span class="n">entityManager</span><span class="o">.</span><span class="na">getCriteriaBuilder</span><span class="o">();</span>
+    <span class="nc">CriteriaQuery</span><span class="o">&lt;</span><span class="nc">Guitar</span><span class="o">&gt;</span> <span class="n">cq</span> <span class="o">=</span> <span class="n">cb</span><span class="o">.</span><span class="na">createQuery</span><span class="o">(</span><span class="nc">Guitar</span><span class="o">.</span><span class="na">class</span><span class="o">);</span>
+    <span class="nc">Root</span><span class="o">&lt;</span><span class="nc">Guitar</span><span class="o">&gt;</span> <span class="n">guitar</span> <span class="o">=</span> <span class="n">cq</span><span class="o">.</span><span class="na">from</span><span class="o">(</span><span class="nc">Guitar</span><span class="o">.</span><span class="na">class</span><span class="o">);</span>
+    <span class="kt">boolean</span> <span class="n">isNewHire</span> <span class="o">=</span> <span class="n">salesPersonId</span> <span class="o">==</span> <span class="no">DAVE</span><span class="o">;</span>
+
+    <span class="nc">Predicate</span> <span class="n">noMapleFretboards</span> <span class="o">=</span> <span class="n">cb</span><span class="o">.</span><span class="na">notEqual</span><span class="o">(</span><span class="n">guitar</span><span class="o">.</span><span class="na">get</span><span class="o">(</span><span class="n">Guitar_</span><span class="o">.</span><span class="na">FRETBOARD_WOOD</span><span class="o">).</span><span class="na">get</span><span class="o">(</span><span class="n">FretboardWood_</span><span class="o">.</span><span class="na">ID</span><span class="o">),</span>
+            <span class="nc">FretboardWood</span><span class="o">.</span><span class="na">MAPLE</span><span class="o">);</span>
+    <span class="nc">Predicate</span> <span class="n">fromRosevilleStore</span> <span class="o">=</span> <span class="n">cb</span><span class="o">.</span><span class="na">equal</span><span class="o">(</span><span class="n">guitar</span><span class="o">.</span><span class="na">get</span><span class="o">(</span><span class="n">Guitar_</span><span class="o">.</span><span class="na">STORE</span><span class="o">).</span><span class="na">get</span><span class="o">(</span><span class="n">Store_</span><span class="o">.</span><span class="na">ID</span><span class="o">),</span> <span class="nc">Store</span><span class="o">.</span><span class="na">ROSEVILLE</span><span class="o">);</span>
+    <span class="nc">Predicate</span> <span class="n">atNewHirePriceCap</span> <span class="o">=</span> <span class="n">cb</span><span class="o">.</span><span class="na">lessThanOrEqualTo</span><span class="o">(</span><span class="n">guitar</span><span class="o">.</span><span class="na">get</span><span class="o">(</span><span class="n">Guitar_</span><span class="o">.</span><span class="na">PRICE</span><span class="o">),</span> <span class="no">NEW_HIRE_PRICE_CAP</span><span class="o">);</span>
+
+    <span class="nc">List</span><span class="o">&lt;</span><span class="nc">Predicate</span><span class="o">&gt;</span> <span class="n">predicates</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">ArrayList</span><span class="o">&lt;&gt;();</span>
+    <span class="n">predicates</span><span class="o">.</span><span class="na">add</span><span class="o">(</span><span class="n">noMapleFretboards</span><span class="o">);</span>
+
+    <span class="k">if</span> <span class="o">(!</span><span class="n">showAllStores</span><span class="o">)</span> <span class="o">{</span>
+        <span class="n">predicates</span><span class="o">.</span><span class="na">add</span><span class="o">(</span><span class="n">fromRosevilleStore</span><span class="o">);</span>
+    <span class="o">}</span>
+
+    <span class="k">if</span> <span class="o">(</span><span class="n">isNewHire</span><span class="o">)</span> <span class="o">{</span>
+        <span class="n">predicates</span><span class="o">.</span><span class="na">add</span><span class="o">(</span><span class="n">atNewHirePriceCap</span><span class="o">);</span>
+    <span class="o">}</span>
+
+    <span class="n">cq</span> <span class="o">=</span> <span class="n">cq</span><span class="o">.</span><span class="na">select</span><span class="o">(</span><span class="n">guitar</span><span class="o">).</span><span class="na">where</span><span class="o">(</span><span class="n">toVarargs</span><span class="o">(</span><span class="n">predicates</span><span class="o">));</span>
+    <span class="nc">TypedQuery</span><span class="o">&lt;</span><span class="nc">Guitar</span><span class="o">&gt;</span> <span class="n">query</span> <span class="o">=</span> <span class="n">entityManager</span><span class="o">.</span><span class="na">createQuery</span><span class="o">(</span><span class="n">cq</span><span class="o">);</span>
+    <span class="k">return</span> <span class="n">query</span><span class="o">.</span><span class="na">getResultList</span><span class="o">();</span>
+<span class="o">}</span>
+
+<span class="nc">Predicate</span><span class="o">[]</span> <span class="nf">toVarargs</span><span class="o">(</span><span class="nc">List</span><span class="o">&lt;</span><span class="nc">Predicate</span><span class="o">&gt;</span> <span class="n">predicates</span><span class="o">)</span> <span class="o">{</span>
+    <span class="k">return</span> <span class="n">predicates</span><span class="o">.</span><span class="na">toArray</span><span class="o">(</span><span class="k">new</span> <span class="nc">Predicate</span><span class="o">[</span><span class="n">predicates</span><span class="o">.</span><span class="na">size</span><span class="o">()]);</span>
+<span class="o">}</span></code></pre></figure>
+
+<p>Now you might be wondering just what the heck is this <code class="language-plaintext highlighter-rouge">Guitar_</code>
+business. <code class="language-plaintext highlighter-rouge">Guitar_</code> (and <code class="language-plaintext highlighter-rouge">FretboardWood_</code>) are metamodel classes. The
+metamodel class and its attributes are used in Criteria queries to
+refer to the managed entity classes and their persistent state and
+relationships. Metamodel classes are typically generated by annotation
+processors either at development time or at runtime. A metamodel class
+is created with a trailing underscore. <a href="https://hibernate.org/orm/tooling">Hibernate Metamodel
+Generator</a> is a popular annotation processor. The following is the
+autogenerated metamodel class for the <code class="language-plaintext highlighter-rouge">Guitar</code> <code class="language-plaintext highlighter-rouge">@Entity</code>:</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="c1">// Guitar_.java stub</span>
+<span class="c1">// ... package declaration and import statements</span>
+
+<span class="nd">@Generated</span><span class="o">(</span><span class="n">value</span> <span class="o">=</span> <span class="s">"org.hibernate.jpamodelgen.JPAMetaModelEntityProcessor"</span><span class="o">)</span>
+<span class="nd">@StaticMetamodel</span><span class="o">(</span><span class="nc">Guitar</span><span class="o">.</span><span class="na">class</span><span class="o">)</span>
+<span class="kd">public</span> <span class="kd">abstract</span> <span class="kd">class</span> <span class="nc">Guitar_</span> <span class="o">{</span>
+
+	<span class="kd">public</span> <span class="kd">static</span> <span class="kd">volatile</span> <span class="nc">SingularAttribute</span><span class="o">&lt;</span><span class="nc">Guitar</span><span class="o">,</span> <span class="nc">Integer</span><span class="o">&gt;</span> <span class="n">serialNumber</span><span class="o">;</span>
+	<span class="kd">public</span> <span class="kd">static</span> <span class="kd">volatile</span> <span class="nc">SingularAttribute</span><span class="o">&lt;</span><span class="nc">Guitar</span><span class="o">,</span> <span class="nc">BigDecimal</span><span class="o">&gt;</span> <span class="n">price</span><span class="o">;</span>
+	<span class="kd">public</span> <span class="kd">static</span> <span class="kd">volatile</span> <span class="nc">SingularAttribute</span><span class="o">&lt;</span><span class="nc">Guitar</span><span class="o">,</span> <span class="nc">Model</span><span class="o">&gt;</span> <span class="n">model</span><span class="o">;</span>
+	<span class="kd">public</span> <span class="kd">static</span> <span class="kd">volatile</span> <span class="nc">SingularAttribute</span><span class="o">&lt;</span><span class="nc">Guitar</span><span class="o">,</span> <span class="nc">BodyFinish</span><span class="o">&gt;</span> <span class="n">finish</span><span class="o">;</span>
+	<span class="kd">public</span> <span class="kd">static</span> <span class="kd">volatile</span> <span class="nc">SingularAttribute</span><span class="o">&lt;</span><span class="nc">Guitar</span><span class="o">,</span> <span class="nc">Store</span><span class="o">&gt;</span> <span class="n">store</span><span class="o">;</span>
+	<span class="kd">public</span> <span class="kd">static</span> <span class="kd">volatile</span> <span class="nc">SingularAttribute</span><span class="o">&lt;</span><span class="nc">Guitar</span><span class="o">,</span> <span class="nc">FretboardWood</span><span class="o">&gt;</span> <span class="n">fretboardWood</span><span class="o">;</span>
+
+	<span class="kd">public</span> <span class="kd">static</span> <span class="kd">final</span> <span class="nc">String</span> <span class="no">SERIAL_NUMBER</span> <span class="o">=</span> <span class="s">"serialNumber"</span><span class="o">;</span>
+	<span class="kd">public</span> <span class="kd">static</span> <span class="kd">final</span> <span class="nc">String</span> <span class="no">PRICE</span> <span class="o">=</span> <span class="s">"price"</span><span class="o">;</span>
+	<span class="kd">public</span> <span class="kd">static</span> <span class="kd">final</span> <span class="nc">String</span> <span class="no">MODEL</span> <span class="o">=</span> <span class="s">"model"</span><span class="o">;</span>
+	<span class="kd">public</span> <span class="kd">static</span> <span class="kd">final</span> <span class="nc">String</span> <span class="no">FINISH</span> <span class="o">=</span> <span class="s">"finish"</span><span class="o">;</span>
+	<span class="kd">public</span> <span class="kd">static</span> <span class="kd">final</span> <span class="nc">String</span> <span class="no">STORE</span> <span class="o">=</span> <span class="s">"store"</span><span class="o">;</span>
+	<span class="kd">public</span> <span class="kd">static</span> <span class="kd">final</span> <span class="nc">String</span> <span class="no">FRETBOARD_WOOD</span> <span class="o">=</span> <span class="s">"fretboardWood"</span><span class="o">;</span>
+
+<span class="o">}</span></code></pre></figure>
+
+<p>Thanks to these generated classes, our criteria queries always have
+the correct attribute names and types. They can easily be updated,
+should they ever change.</p>
+
+<h3 id="using-spring-data-jpa-specifications">Using Spring Data JPA Specifications</h3>
+
+<p>The last approach involves the declaration of
+specifications. <a href="https://docs.spring.io/spring-data/jpa/docs/2.7.18/api/org/springframework/data/jpa/domain/Specification.html">Specification</a> is a functional interface with the
+following signature:</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="n">jakarta</span><span class="o">.</span><span class="na">persistence</span><span class="o">.</span><span class="na">criteria</span><span class="o">.</span><span class="na">Predicate</span> <span class="nf">toPredicate</span><span class="o">(</span>
+        <span class="n">jakarta</span><span class="o">.</span><span class="na">persistence</span><span class="o">.</span><span class="na">criteria</span><span class="o">.</span><span class="na">Root</span><span class="o">&lt;</span><span class="no">T</span><span class="o">&gt;</span> <span class="n">root</span><span class="o">,</span>
+        <span class="n">jakarta</span><span class="o">.</span><span class="na">persistence</span><span class="o">.</span><span class="na">criteria</span><span class="o">.</span><span class="na">CriteriaQuery</span><span class="o">&lt;?&gt;</span> <span class="n">query</span><span class="o">,</span>
+        <span class="n">jakarta</span><span class="o">.</span><span class="na">persistence</span><span class="o">.</span><span class="na">criteria</span><span class="o">.</span><span class="na">CriteriaBuilder</span> <span class="n">criteriaBuilder</span><span class="o">)</span></code></pre></figure>
+
+<p>You typically write these as static methods in a Specs class like so:</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="c1">// GuitarSpecs.java</span>
+<span class="c1">// ... package declaration and import statements</span>
+<span class="kd">public</span> <span class="kd">class</span> <span class="nc">GuitarSpecs</span> <span class="o">{</span>
+
+    <span class="kd">public</span> <span class="kd">static</span> <span class="nc">Specification</span><span class="o">&lt;</span><span class="nc">Guitar</span><span class="o">&gt;</span> <span class="nf">noMapleFretboards</span><span class="o">()</span> <span class="o">{</span>
+        <span class="k">return</span> <span class="o">(</span><span class="n">root</span><span class="o">,</span> <span class="n">query</span><span class="o">,</span> <span class="n">builder</span><span class="o">)</span> <span class="o">-&gt;</span> <span class="o">{</span>
+            <span class="nc">Join</span><span class="o">&lt;</span><span class="nc">Guitar</span><span class="o">,</span> <span class="nc">FretboardWood</span><span class="o">&gt;</span> <span class="n">fretboardWood</span> <span class="o">=</span> <span class="n">root</span><span class="o">.</span><span class="na">join</span><span class="o">(</span><span class="n">Guitar_</span><span class="o">.</span><span class="na">FRETBOARD_WOOD</span><span class="o">);</span>
+            <span class="k">return</span> <span class="n">builder</span><span class="o">.</span><span class="na">notEqual</span><span class="o">(</span><span class="n">fretboardWood</span><span class="o">.</span><span class="na">get</span><span class="o">(</span><span class="n">FretboardWood_</span><span class="o">.</span><span class="na">ID</span><span class="o">),</span> <span class="nc">FretboardWood</span><span class="o">.</span><span class="na">MAPLE</span><span class="o">);</span>
+        <span class="o">};</span>
+    <span class="o">}</span>
+
+    <span class="kd">public</span> <span class="kd">static</span> <span class="nc">Specification</span><span class="o">&lt;</span><span class="nc">Guitar</span><span class="o">&gt;</span> <span class="nf">from</span><span class="o">(</span><span class="nc">Store</span> <span class="n">store</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">return</span> <span class="o">(</span><span class="n">root</span><span class="o">,</span> <span class="n">query</span><span class="o">,</span> <span class="n">builder</span><span class="o">)</span> <span class="o">-&gt;</span>
+                <span class="n">builder</span><span class="o">.</span><span class="na">equal</span><span class="o">(</span><span class="n">root</span><span class="o">.</span><span class="na">get</span><span class="o">(</span><span class="n">Guitar_</span><span class="o">.</span><span class="na">STORE</span><span class="o">),</span> <span class="n">store</span><span class="o">);</span>
+    <span class="o">}</span>
+
+    <span class="kd">public</span> <span class="kd">static</span> <span class="nc">Specification</span><span class="o">&lt;</span><span class="nc">Guitar</span><span class="o">&gt;</span> <span class="nf">limitPriceTo</span><span class="o">(</span><span class="nc">BigDecimal</span> <span class="n">value</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">return</span> <span class="o">(</span><span class="n">root</span><span class="o">,</span> <span class="n">query</span><span class="o">,</span> <span class="n">builder</span><span class="o">)</span> <span class="o">-&gt;</span>
+                <span class="n">builder</span><span class="o">.</span><span class="na">lessThanOrEqualTo</span><span class="o">(</span><span class="n">root</span><span class="o">.</span><span class="na">get</span><span class="o">(</span><span class="n">Guitar_</span><span class="o">.</span><span class="na">PRICE</span><span class="o">),</span> <span class="n">value</span><span class="o">);</span>
+    <span class="o">}</span>
+<span class="o">}</span></code></pre></figure>
+
+<p>Finally, we chain these specs with <code class="language-plaintext highlighter-rouge">.or()</code> &amp; <code class="language-plaintext highlighter-rouge">.and()</code> (as per our
+requirements) into a single spec, which we then pass to an
+all-too-familiar <code class="language-plaintext highlighter-rouge">findAll</code> method:</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="c1">// AppService.java stub</span>
+<span class="nc">List</span><span class="o">&lt;</span><span class="nc">Guitar</span><span class="o">&gt;</span> <span class="nf">getInventoryUsingSpecs</span><span class="o">(</span><span class="kt">boolean</span> <span class="n">showAllStores</span><span class="o">,</span> <span class="kt">int</span> <span class="n">salesPersonId</span><span class="o">)</span> <span class="o">{</span>
+    <span class="kt">boolean</span> <span class="n">isNewHire</span> <span class="o">=</span> <span class="n">salesPersonId</span> <span class="o">==</span> <span class="no">DAVE</span><span class="o">;</span>
+
+    <span class="nc">Specification</span><span class="o">&lt;</span><span class="nc">Guitar</span><span class="o">&gt;</span> <span class="n">spec</span> <span class="o">=</span> <span class="nc">GuitarSpecs</span><span class="o">.</span><span class="na">noMapleFretboards</span><span class="o">();</span>
+
+    <span class="k">if</span> <span class="o">(!</span><span class="n">showAllStores</span><span class="o">)</span> <span class="o">{</span>
+        <span class="nc">Store</span> <span class="n">roseville</span> <span class="o">=</span> <span class="n">storeRepository</span><span class="o">.</span><span class="na">getReferenceById</span><span class="o">(</span><span class="nc">Store</span><span class="o">.</span><span class="na">ROSEVILLE</span><span class="o">);</span>
+        <span class="n">spec</span> <span class="o">=</span> <span class="n">spec</span><span class="o">.</span><span class="na">and</span><span class="o">(</span><span class="nc">GuitarSpecs</span><span class="o">.</span><span class="na">from</span><span class="o">(</span><span class="n">roseville</span><span class="o">));</span>
+    <span class="o">}</span>
+
+    <span class="k">if</span> <span class="o">(</span><span class="n">isNewHire</span><span class="o">)</span> <span class="o">{</span>
+        <span class="n">spec</span> <span class="o">=</span> <span class="n">spec</span><span class="o">.</span><span class="na">and</span><span class="o">(</span><span class="nc">GuitarSpecs</span><span class="o">.</span><span class="na">limitPriceTo</span><span class="o">(</span><span class="no">NEW_HIRE_PRICE_CAP</span><span class="o">));</span>
+    <span class="o">}</span>
+
+    <span class="k">return</span> <span class="n">guitarRepository</span><span class="o">.</span><span class="na">findAll</span><span class="o">(</span><span class="n">spec</span><span class="o">);</span>
+<span class="o">}</span></code></pre></figure>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>JPQL queries are a perfectly valid JPA tool and are not going away any
+time soon (they’re well supported in Spring Data JPA with the
+<a href="https://docs.spring.io/spring-data/jpa/docs/2.7.18/api/org/springframework/data/jpa/repository/Query.html">@Query</a> annotation). But a key aspect of being a professional is
+choosing the right tool for the job, and the benefits of using
+Criteria API/Specifications for complex querying are far too many to
+be ignored in favor of string mangling. Criteria API represents an
+incredibly valuable force multiplier that’s available to you the
+moment JPQL is.</p>
+
+
+  </div><a class="u-url" href="/jpql-harmful/" hidden></a>
+</article>
+
+      </div>
+    </main><footer class="site-footer h-card">
+  <data class="u-url" href="/"></data>
+
+  <div class="wrapper">
+
+    <h2 class="footer-heading">Daniel&#39;s Blog</h2>
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <p>There will be code</p>
+      </div>
+
+      <div class="footer-col footer-col-2"><ul class="social-media-list"><li><a href="https://github.com/daniel-aguilar"><svg class="svg-icon"><use xlink:href="/assets/minima-social-icons.svg#github"></use></svg> <span class="username">daniel-aguilar</span></a></li><li><a href="https://www.linkedin.com/in/dan-aguilar"><svg class="svg-icon"><use xlink:href="/assets/minima-social-icons.svg#linkedin"></use></svg> <span class="username">dan-aguilar</span></a></li><li><a href="/feed.xml"><svg class="svg-icon"><use xlink:href="/assets/minima-social-icons.svg#rss"></use></svg> <span>RSS</span></a></li></ul>
+</div>
+
+      <div class="footer-col footer-col-3">
+        <p>
+          This work is licensed under <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a><img src="https://mirrors.creativecommons.org/presskit/icons/cc.svg" alt="" style="max-width: 1em;max-height:1em;margin-left: .2em;"><img src="https://mirrors.creativecommons.org/presskit/icons/by.svg" alt="" style="max-width: 1em;max-height:1em;margin-left: .2em;">
+        </p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+</body>
+
+</html>
